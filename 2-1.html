@@ -1,0 +1,2493 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Озоновая пила 2: Русалки-вампиры против Кибер-викингов [3D & Online]</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js r128 для 3D-графики -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- PeerJS для P2P-мультиплеера на статическом хостинге (GitHub Pages / Cloudflare) -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --ozone-cyan: #00f3ff;
+            --ozone-blue: #0066ff;
+            --vamp-red: #ff0055;
+            --viking-gold: #ffaa00;
+            --bg-dark: #05070f;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-dark);
+            color: #ffffff;
+            font-family: 'JetBrains Mono', monospace;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .title-font {
+            font-family: 'Russo One', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .neon-ozone {
+            text-shadow: 0 0 8px var(--ozone-cyan), 0 0 20px var(--ozone-blue);
+        }
+
+        .neon-vamp {
+            text-shadow: 0 0 8px var(--vamp-red), 0 0 20px #990033;
+        }
+
+        .neon-viking {
+            text-shadow: 0 0 8px var(--viking-gold), 0 0 20px #cc5500;
+        }
+
+        .saw-border {
+            border: 2px solid var(--ozone-cyan);
+            box-shadow: 0 0 18px rgba(0, 243, 255, 0.3), inset 0 0 15px rgba(0, 243, 255, 0.12);
+        }
+
+        .btn-arcade {
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+        }
+
+        .btn-arcade:active {
+            transform: scale(0.93);
+        }
+
+        @keyframes spin-saw {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .spin-fast {
+            animation: spin-saw 1.6s linear infinite;
+        }
+
+        @keyframes danger-pulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 15px #ff0055, 0 0 30px #ffaa00; }
+            50% { transform: scale(1.08); box-shadow: 0 0 28px #00f3ff, 0 0 45px #ffffff; }
+        }
+
+        .grab-alert-btn {
+            animation: danger-pulse 0.45s infinite !important;
+            border-color: #ffffff !important;
+        }
+
+        /* Ретро сканлайны */
+        .scanlines {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0, 0, 0, 0.18) 50%,
+                rgba(0, 0, 0, 0.18)
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+
+        #webglContainer {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Кастомный скроллбар для мобильных модалок */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #00f3ff;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="relative w-full h-full bg-[#05070f] select-none overflow-hidden">
+
+    <!-- 3D WebGL Сцена и 2D Оверлей для индикаторов и джойстика -->
+    <div id="webglContainer"></div>
+    <canvas id="hudOverlayCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-10"></canvas>
+    <div class="scanlines absolute inset-0 z-10"></div>
+
+    <!-- ================= КОМПАКТНЫЙ МОБИЛЬНЫЙ ВЕРХНИЙ HUD ================= -->
+    <header id="hudBar" class="hidden fixed top-0 left-0 right-0 z-20 bg-[#080d1a]/85 border-b border-cyan-500/40 px-2.5 py-1.5 backdrop-blur-md">
+        <div class="max-w-6xl mx-auto flex items-center justify-between gap-2">
+            
+            <!-- Блок здоровья и волны -->
+            <div class="flex items-center gap-2 min-w-0">
+                <div id="factionBadge" class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center border border-cyan-400 bg-cyan-950/70 text-base sm:text-xl shrink-0 shadow-[0_0_8px_#00f3ff]">
+                    🪓
+                </div>
+                <div class="min-w-0">
+                    <div class="flex items-center gap-1.5">
+                        <span id="playerNameHud" class="title-font text-[10px] sm:text-xs text-cyan-300 truncate max-w-[90px] sm:max-w-none">БЬЁРН</span>
+                        <span id="waveBadge" class="text-[9px] sm:text-[11px] bg-purple-900/90 border border-purple-400 px-1.5 py-0.2 rounded text-purple-200 font-bold shrink-0">В.1</span>
+                        <span id="netStatusBadge" class="hidden text-[9px] bg-emerald-900/90 border border-emerald-400 px-1.5 rounded text-emerald-200 font-bold shrink-0">ONLINE</span>
+                    </div>
+                    <!-- Полоска HP + Индикатор анти-захвата -->
+                    <div class="w-28 sm:w-44 h-3 bg-gray-900 rounded-full overflow-hidden border border-gray-700 mt-0.5 relative">
+                        <div id="hpBar" class="h-full bg-gradient-to-r from-rose-600 to-emerald-400 transition-all duration-100" style="width: 100%;"></div>
+                        <span id="hpText" class="absolute inset-0 flex items-center justify-center text-[9px] font-extrabold text-white drop-shadow">120/120</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Центральный блок: Озон O3 и Обороты Пилы -->
+            <div class="flex flex-col items-center flex-1 max-w-[150px] sm:max-w-xs">
+                <div class="flex items-center justify-between w-full text-[9px] sm:text-[10px] mb-0.5">
+                    <span class="text-cyan-300 font-bold truncate">ПИЛА O₃</span>
+                    <span id="sawRpmText" class="text-amber-300 font-bold">9000 ОБ</span>
+                </div>
+                <div class="w-full h-3 sm:h-3.5 bg-slate-950 rounded-full overflow-hidden border border-cyan-400/80 p-0.5 shadow-[0_0_10px_rgba(0,243,255,0.35)] relative">
+                    <div id="ozoneBar" class="h-full rounded-full bg-gradient-to-r from-blue-600 via-cyan-400 to-white transition-all duration-100" style="width: 30%;"></div>
+                    <span id="ozoneText" class="absolute inset-0 flex items-center justify-center text-[8px] sm:text-[9px] font-black text-white drop-shadow">O₃: 30%</span>
+                </div>
+            </div>
+
+            <!-- Правый блок: Счет, Музыка, Мастерская -->
+            <div class="flex items-center gap-1 sm:gap-2 shrink-0">
+                <div class="text-right hidden xs:block">
+                    <div class="text-[8px] text-slate-400 leading-none">СЧЕТ</div>
+                    <div id="scoreText" class="title-font text-xs sm:text-base text-amber-400">0000</div>
+                </div>
+                <button id="musicToggleBtn" class="w-8 h-8 rounded-lg bg-slate-800/90 border border-purple-400/50 text-purple-300 text-xs flex items-center justify-center" title="8-бит Музыка Вкл/Выкл">
+                    🎵
+                </button>
+                <button id="soundToggleBtn" class="w-8 h-8 rounded-lg bg-slate-800/90 border border-cyan-500/40 text-cyan-300 text-xs flex items-center justify-center" title="Звуки Пилы Вкл/Выкл">
+                    🔊
+                </button>
+                <button id="upgradeMenuBtn" class="px-2 py-1.5 rounded-lg bg-amber-500/20 border border-amber-400 text-amber-300 text-[10px] sm:text-xs font-extrabold flex items-center gap-1 shadow-[0_0_10px_rgba(255,170,0,0.3)]">
+                    <span>⚙️</span>
+                    <span class="hidden md:inline">ЦЕХ</span>
+                    <span id="skillPointsBadge" class="bg-amber-400 text-black px-1.5 rounded-full text-[10px] font-black">0</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Полоска БОССА или СОПЕРНИКА в PvP -->
+    <div id="bossHud" class="hidden fixed top-14 left-1/2 -translate-x-1/2 z-20 w-11/12 max-w-md pointer-events-none">
+        <div class="bg-black/85 border border-rose-500 rounded-xl px-3 py-1.5 shadow-[0_0_20px_rgba(255,0,85,0.5)]">
+            <div class="flex justify-between items-center mb-0.5">
+                <span id="bossNameText" class="title-font text-[10px] sm:text-xs text-rose-400 truncate">БОСС: МОРГАНА</span>
+                <span id="bossHpPercent" class="text-[10px] font-bold text-rose-200">100%</span>
+            </div>
+            <div class="w-full h-2.5 bg-rose-950 rounded-full overflow-hidden border border-rose-600">
+                <div id="bossHpBar" class="h-full bg-gradient-to-r from-red-600 via-rose-500 to-amber-400 transition-all duration-100" style="width: 100%;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Всплывающий баннер событий -->
+    <div id="toastBanner" class="pointer-events-none fixed top-24 left-1/2 -translate-x-1/2 z-20 w-11/12 max-w-md transition-all duration-300 opacity-0 scale-90 text-center">
+        <div class="inline-block bg-cyan-950/90 border border-cyan-400 px-4 py-1.5 rounded-full shadow-[0_0_20px_#00f3ff]">
+            <span id="toastText" class="title-font text-[11px] sm:text-sm text-cyan-200">ОЗОНОВАЯ ПИЛА ЗАПУЩЕНА!</span>
+        </div>
+    </div>
+
+    <!-- Тревожный индикатор захвата боссом / толпой -->
+    <div id="grabWarningBanner" class="hidden pointer-events-none fixed top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 text-center">
+        <div class="bg-rose-950/95 border-2 border-white px-4 py-2 rounded-2xl shadow-[0_0_30px_#ff0055] animate-bounce">
+            <div class="title-font text-xs sm:text-base text-white">⚠️ ЗАХВАТ! ЖМИ «РЫВОК / ВЫРВАТЬСЯ»! ⚠️</div>
+        </div>
+    </div>
+
+    <!-- ================= ЭРГОНОМИЧНЫЙ МОБИЛЬНЫЙ И ДЕСКТОПНЫЙ БЛОК УПРАВЛЕНИЯ ================= -->
+    <div id="touchControlsWrapper" class="hidden fixed inset-0 z-10 pointer-events-none">
+        <!-- Левая половина экрана — зона плавающего виртуального джойстика -->
+        <div id="leftJoystickZone" class="absolute left-0 bottom-0 top-14 w-1/2 pointer-events-auto">
+            <div class="absolute bottom-5 left-5 text-[10px] text-cyan-400/50 font-bold pointer-events-none md:hidden">
+                🕹️ КАСАНИЕ СЛЕВА — ХОДЬБА И НАВЕДЕНИЕ ПИЛЫ
+            </div>
+        </div>
+
+        <!-- Правый нижний угол — крупные аркадные кнопки под большой палец -->
+        <div class="absolute right-3 bottom-4 sm:right-6 sm:bottom-6 flex flex-col items-end gap-2.5 pointer-events-auto">
+            
+            <!-- Кнопка УЛЬТЫ (Сверх-Озоновый Форсаж O3) -->
+            <button id="btnOverdrive" class="btn-arcade w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-purple-700 via-rose-600 to-amber-500 border-2 border-amber-300 text-white shadow-[0_0_18px_rgba(255,0,85,0.5)] flex flex-col items-center justify-center opacity-50">
+                <span class="text-lg sm:text-2xl leading-none">⚡</span>
+                <span class="title-font text-[9px] sm:text-[10px] mt-0.5">ФОРСАЖ</span>
+                <span id="ultBtnSub" class="text-[8px] font-bold text-amber-200">НУЖЕН O₃</span>
+            </button>
+
+            <div class="flex items-center gap-2.5">
+                <!-- Кнопка АНТИ-ЗАХВАТА / ОЗОНОВОГО РЫВКА -->
+                <button id="btnDashEscape" class="btn-arcade relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-emerald-600 to-cyan-700 border-2 border-emerald-300 text-white shadow-[0_0_15px_rgba(16,185,129,0.5)] flex flex-col items-center justify-center">
+                    <span class="text-lg sm:text-2xl leading-none">💥</span>
+                    <span class="title-font text-[9px] sm:text-[10px] mt-0.5">РЫВОК</span>
+                    <span id="dashCdText" class="text-[8px] font-extrabold text-emerald-200">ВЫРВАТЬСЯ</span>
+                </button>
+
+                <!-- Главная кнопка БРОСКА ДИСКА ОЗОНОВОЙ ПИЛЫ -->
+                <button id="btnThrowSaw" class="btn-arcade w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-800 border-4 border-cyan-200 text-white shadow-[0_0_24px_rgba(0,243,255,0.65)] flex flex-col items-center justify-center">
+                    <span class="text-2xl sm:text-3xl leading-none">💿</span>
+                    <span class="title-font text-[10px] sm:text-xs mt-0.5">БРОСОК</span>
+                    <span class="text-[8px] font-bold text-cyan-200">ПИЛЫ [O₃]</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Подсказка клавиш для ПК (скрыта на телефонах) -->
+        <div class="hidden lg:flex fixed bottom-3 left-6 bg-slate-950/80 border border-cyan-500/30 px-3 py-1.5 rounded-xl text-[11px] text-slate-300 gap-4 pointer-events-none">
+            <span><kbd class="text-cyan-300 font-bold">WASD</kbd> Ходьба</span>
+            <span><kbd class="text-cyan-300 font-bold">Мышь</kbd> Направление пилы</span>
+            <span><kbd class="text-cyan-300 font-bold">ЛКМ / Пробел</kbd> Бросок пилы</span>
+            <span><kbd class="text-emerald-300 font-bold">Shift / Q</kbd> Рывок / Вырваться из захвата</span>
+            <span><kbd class="text-amber-300 font-bold">E / ПКМ</kbd> Форсаж O₃ (только в движении!)</span>
+        </div>
+    </div>
+
+    <!-- ================= СТАРТОВОЕ МЕНЮ + P2P СЕТЕВОЕ ЛОББИ ================= -->
+    <div id="startModal" class="fixed inset-0 z-30 flex items-center justify-center p-2.5 sm:p-4 bg-[#04060c]/95 backdrop-blur-md overflow-y-auto">
+        <div class="max-w-4xl w-full bg-[#0b1122] saw-border rounded-2xl sm:rounded-3xl p-4 sm:p-6 my-auto">
+            
+            <!-- Шапка с логотипом 3D Озоновой пилы -->
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4 text-center sm:text-left">
+                <div class="w-16 h-16 sm:w-20 sm:h-20 shrink-0 flex items-center justify-center">
+                    <svg class="w-full h-full spin-fast drop-shadow-[0_0_12px_#00f3ff]" viewBox="0 0 100 100">
+                        <polygon points="50,2 58,14 68,5 69,19 83,14 78,28 93,29 83,40 98,47 84,55 95,66 80,69 86,83 71,80 71,94 59,85 52,98 44,85 33,95 31,80 17,85 22,71 7,70 17,58 2,52 16,44 5,33 20,30 14,16 29,19 29,5 41,14" fill="#00f3ff" stroke="#ffffff" stroke-width="1.5"/>
+                        <circle cx="50" cy="50" r="31" fill="#09152b" stroke="#00f3ff" stroke-width="3"/>
+                        <circle cx="50" cy="50" r="13" fill="#00f3ff"/>
+                        <text x="50" y="54" text-anchor="middle" fill="#05070f" font-weight="900" font-size="11" font-family="monospace">O₃</text>
+                    </svg>
+                </div>
+                <div>
+                    <div class="inline-block px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400 text-cyan-300 text-[10px] font-bold mb-1">
+                        ⚡ 3D EDITION • P2P MULTIPLAYER • 8-BIT SYNTH ⚡
+                    </div>
+                    <h1 class="title-font text-xl sm:text-4xl text-white neon-ozone leading-tight">
+                        ОЗОНОВАЯ ПИЛА 2
+                    </h1>
+                    <p class="title-font text-xs sm:text-lg text-transparent bg-clip-text bg-gradient-to-r from-rose-400 via-cyan-300 to-amber-400">
+                        РУСАЛКИ-ВАМПИРЫ ПРОТИВ КИБЕР-ВИКИНГОВ
+                    </p>
+                </div>
+            </div>
+
+            <!-- СЕТЕВОЙ БЛОК (P2P Мультиплеер для GitHub / Cloudflare без бэкенда) -->
+            <div class="bg-slate-900/95 border border-cyan-500/40 rounded-2xl p-3 sm:p-4 mb-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                        <span class="title-font text-xs sm:text-sm text-cyan-300">🌐 СЕТЕВАЯ ИГРА (КООП ИЛИ ДУЭЛЬ 1x1)</span>
+                    </div>
+                    <!-- Переключатель сетевого режима -->
+                    <div class="flex rounded-lg overflow-hidden border border-cyan-500/50 text-[10px] sm:text-xs font-bold">
+                        <button id="modeCoopBtn" class="px-2.5 py-1 bg-cyan-500 text-slate-950">🤝 КООП (ОРДА x2)</button>
+                        <button id="modePvpBtn" class="px-2.5 py-1 bg-slate-800 text-slate-300">⚔️ ДУЭЛЬ (PvP + ОРДА)</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                    <!-- Создание комнаты -->
+                    <div class="bg-slate-950/90 border border-slate-700 rounded-xl p-2.5 flex flex-col justify-between">
+                        <div class="text-slate-300 mb-1.5">
+                            <strong class="text-amber-300">Создать комнату:</strong> получите 4-значный код и отправьте другу.
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button id="btnHostRoom" class="btn-arcade flex-1 py-2 px-3 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-extrabold text-xs">
+                                📡 СОЗДАТЬ КОД
+                            </button>
+                            <div id="hostCodeBox" class="hidden flex items-center gap-1 bg-slate-900 border border-cyan-400 px-2.5 py-1.5 rounded-lg">
+                                <span id="roomCodeDisplay" class="title-font text-sm text-amber-300 tracking-widest">----</span>
+                                <button id="btnCopyCode" class="ml-1 px-1.5 py-0.5 bg-cyan-500/30 hover:bg-cyan-500/50 rounded text-[10px] text-cyan-200 font-bold" title="Скопировать код">
+                                    📋
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Подключение по коду -->
+                    <div class="bg-slate-950/90 border border-slate-700 rounded-xl p-2.5 flex flex-col justify-between">
+                        <div class="text-slate-300 mb-1.5">
+                            <strong class="text-emerald-300">Войти к другу:</strong> введите 4 символа кода комнаты:
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input id="joinCodeInput" type="text" maxlength="4" placeholder="КОД4" class="w-24 py-1.5 px-2.5 rounded-lg bg-slate-900 border border-cyan-500/60 text-center title-font text-sm text-white uppercase tracking-widest focus:outline-none focus:border-amber-400">
+                            <button id="btnJoinRoom" class="btn-arcade flex-1 py-2 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs">
+                                🔗 ПОДКЛЮЧИТЬСЯ
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div id="lobbyStatusText" class="text-[11px] text-cyan-300 mt-2 text-center font-bold">
+                    Можно играть одному сразу или подключить второго игрока по коду!
+                </div>
+            </div>
+
+            <!-- ВЫБОР ФРАКЦИИ (Кибер-Викинги vs Русалки-Вампиры) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <!-- Кибер-Викинг -->
+                <div id="selectViking" class="btn-arcade cursor-pointer rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-amber-950/60 via-slate-900 to-cyan-950/50 border-2 border-amber-400 hover:border-cyan-300 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-[10px] font-extrabold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/40">НЕО-ВАЛЬГАЛЛА</span>
+                            <span class="text-xl">🪓🤖</span>
+                        </div>
+                        <h2 class="title-font text-base sm:text-lg text-amber-400 neon-viking">КИБЕР-ВИКИНГ БЬЁРН</h2>
+                        <p class="text-[11px] text-slate-300 mt-1">
+                            Тяжелая 3D <span class="text-cyan-300 font-bold">Озоновая Пила «Мьёльнир-O₃»</span> с широким вылетом шины и +25% титановой брони.
+                        </p>
+                    </div>
+                    <button class="w-full mt-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold title-font text-xs sm:text-sm shadow-[0_0_12px_rgba(255,170,0,0.5)]">
+                        В БОЙ ЗА КИБЕР-ВИКИНГА
+                    </button>
+                </div>
+
+                <!-- Русалка-Вампир -->
+                <div id="selectMermaid" class="btn-arcade cursor-pointer rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-rose-950/60 via-slate-900 to-purple-950/50 border-2 border-rose-500 hover:border-cyan-300 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-[10px] font-extrabold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-400/40">КОВЕН БЕЗДНЫ</span>
+                            <span class="text-xl">🧜‍♀️🧛‍♀️</span>
+                        </div>
+                        <h2 class="title-font text-base sm:text-lg text-rose-400 neon-vamp">РУСАЛКА-ВАМПИР КАРМИЛЛА</h2>
+                        <p class="text-[11px] text-slate-300 mt-1">
+                            Высокооборотная <span class="text-cyan-300 font-bold">Кроваво-Озоновая Гидро-Пила</span>: повышенная маневренность и вампиризм от распила.
+                        </p>
+                    </div>
+                    <button class="w-full mt-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold title-font text-xs sm:text-sm shadow-[0_0_12px_rgba(255,0,85,0.5)]">
+                        В БОЙ ЗА РУСАЛКУ-ВАМПИРА
+                    </button>
+                </div>
+            </div>
+
+            <div class="text-[10px] sm:text-xs text-slate-400 text-center">
+                💡 <span class="text-cyan-300 font-bold">Новое в балансе:</span> Пила следует за вашим выпадом, кнопка <strong class="text-emerald-300">«РЫВОК»</strong> мгновенно разрывает захват боссов, а <strong class="text-amber-300">«ФОРСАЖ O₃»</strong> требует постоянного движения!
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ЦЕХ МОДИФИКАЦИИ ПИЛЫ (СБАЛАНСИРОВАННАЯ ПРОКАЧКА) ================= -->
+    <div id="upgradeModal" class="hidden fixed inset-0 z-30 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm overflow-y-auto">
+        <div class="max-w-lg w-full bg-[#0c1428] saw-border rounded-2xl p-4 sm:p-5 my-auto">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="title-font text-base sm:text-lg text-cyan-300 neon-ozone">⚙️ ЦЕХ ОЗОНОВОЙ ПИЛЫ O₃</h3>
+                <span id="modalSkillPoints" class="px-2.5 py-1 rounded-full bg-amber-400 text-black font-extrabold text-xs">ОЧКОВ: 0</span>
+            </div>
+
+            <div class="space-y-2 mb-4 text-xs">
+                <div class="flex items-center justify-between bg-slate-900/90 border border-cyan-500/30 p-2.5 rounded-xl gap-2">
+                    <div>
+                        <div class="font-bold text-cyan-300">1. Алмазные Зубья O₃ + Ожог</div>
+                        <div class="text-[11px] text-slate-400">Урон распила +22% и озоновое горение врагов</div>
+                    </div>
+                    <button onclick="buyUpgrade('teeth')" class="shrink-0 px-3 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold">
+                        УР. <span id="upgTeeth">1</span>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between bg-slate-900/90 border border-cyan-500/30 p-2.5 rounded-xl gap-2">
+                    <div>
+                        <div class="font-bold text-amber-300">2. Гидро-Привод Шины (Выпад)</div>
+                        <div class="text-[11px] text-slate-400">Дальность вылета пилы вперед и отталкивание врагов</div>
+                    </div>
+                    <button onclick="buyUpgrade('reach')" class="shrink-0 px-3 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold">
+                        УР. <span id="upgReach">1</span>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between bg-slate-900/90 border border-cyan-500/30 p-2.5 rounded-xl gap-2">
+                    <div>
+                        <div class="font-bold text-blue-300">3. Рикошетный Магнит Диска</div>
+                        <div class="text-[11px] text-slate-400">+1 отскок брошенной пилы, выше скорость и ширина диска</div>
+                    </div>
+                    <button onclick="buyUpgrade('ricochet')" class="shrink-0 px-3 py-2 rounded-lg bg-blue-500 hover:bg-blue-400 text-white font-extrabold">
+                        УР. <span id="upgRicochet">1</span>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between bg-slate-900/90 border border-cyan-500/30 p-2.5 rounded-xl gap-2">
+                    <div>
+                        <div class="font-bold text-purple-300">4. Мини-Дрон «Спутник O₃» (Макс 2)</div>
+                        <div class="text-[11px] text-slate-400">Малый скоростной диск прикрытия (не делает бессмертным AFK)</div>
+                    </div>
+                    <button onclick="buyUpgrade('drone')" class="shrink-0 px-3 py-2 rounded-lg bg-purple-500 hover:bg-purple-400 text-white font-extrabold">
+                        <span id="upgDrone">0/2</span>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between bg-slate-900/90 border border-cyan-500/30 p-2.5 rounded-xl gap-2">
+                    <div>
+                        <div class="font-bold text-rose-400">5. Крио-Вампиризм и Реактор Рывка</div>
+                        <div class="text-[11px] text-slate-400">+25 Макс. ХП, лечение от распила и быстрая перезарядка Рывка</div>
+                    </div>
+                    <button onclick="buyUpgrade('vamp')" class="shrink-0 px-3 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-extrabold">
+                        УР. <span id="upgVamp">1</span>
+                    </button>
+                </div>
+            </div>
+
+            <button id="closeUpgradeBtn" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 title-font text-xs sm:text-sm font-bold">
+                ПРОДОЛЖИТЬ РУБКУ!
+            </button>
+        </div>
+    </div>
+
+    <!-- ================= ЭКРАН ИТОГОВ БОЯ ================= -->
+    <div id="gameOverModal" class="hidden fixed inset-0 z-30 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+        <div class="max-w-md w-full bg-[#0b1122] saw-border rounded-3xl p-5 text-center">
+            <div class="text-4xl mb-1" id="endEmoji">⚙️</div>
+            <h2 id="endTitle" class="title-font text-2xl text-rose-500 neon-vamp mb-1">РЕАКТОР O₃ ПЕРЕГРУЖЕН!</h2>
+            <p id="endSubtitle" class="text-xs text-slate-300 mb-4">Битва была легендарной!</p>
+            
+            <div class="bg-slate-900/90 border border-cyan-500/30 rounded-2xl p-3.5 mb-4 space-y-1.5 text-xs sm:text-sm">
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Герой:</span>
+                    <span id="endFaction" class="font-bold text-cyan-300">-</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Волна:</span>
+                    <span id="endWave" class="font-bold text-purple-300">1</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Счет распила:</span>
+                    <span id="endScore" class="font-extrabold text-amber-400">0</span>
+                </div>
+            </div>
+
+            <div class="flex gap-2.5">
+                <button id="restartSameBtn" class="btn-arcade flex-1 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 title-font text-xs font-bold">
+                    🔄 СНОВА В БОЙ
+                </button>
+                <button id="changeFactionBtn" class="btn-arcade flex-1 py-2.5 rounded-xl bg-slate-800 border border-cyan-400/50 text-cyan-300 title-font text-xs">
+                    🏠 В ЛОББИ
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // 1. ПРОЦЕДУРНЫЙ 8-БИТНЫЙ НЕО-РЕТРО КИБЕРПАНК СЕКВЕНСОР И SFX (WEB AUDIO API)
+        // =========================================================================
+        class CyberpunkAudioSystem {
+            constructor() {
+                this.ctx = null;
+                this.sfxEnabled = true;
+                this.musicEnabled = true;
+                this.isPlayingMusic = false;
+                this.tensionLevel = 1; // 1 = Спокойный киберпанк, 2 = Накал волны, 3 = Босс / Форсаж O3 / Дуэль
+                this.step = 0;
+                this.nextNoteTime = 0;
+                this.schedulerTimer = null;
+
+                // Минорные киберпанк-паттерны (D minor / Phrygian darksynth)
+                this.bassNotes = [36.71, 36.71, 43.65, 36.71, 41.20, 38.89, 36.71, 32.70]; // D1, F1, E1, C1
+                this.arpCalm = [146.83, 174.61, 220.00, 261.63, 220.00, 174.61, 164.81, 130.81];
+                this.arpAction = [293.66, 349.23, 440.00, 523.25, 466.16, 440.00, 349.23, 329.63];
+                this.bossLead = [587.33, 0, 523.25, 587.33, 698.46, 659.25, 587.33, 440.00];
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+                if (this.musicEnabled && !this.isPlayingMusic) {
+                    this.startMusic();
+                }
+            }
+
+            startMusic() {
+                if (!this.ctx) return;
+                this.isPlayingMusic = true;
+                this.nextNoteTime = this.ctx.currentTime + 0.05;
+                if (this.schedulerTimer) clearInterval(this.schedulerTimer);
+                this.schedulerTimer = setInterval(() => this.scheduleMusic(), 45);
+            }
+
+            stopMusic() {
+                this.isPlayingMusic = false;
+                if (this.schedulerTimer) clearInterval(this.schedulerTimer);
+            }
+
+            scheduleMusic() {
+                if (!this.musicEnabled || !this.ctx || !this.isPlayingMusic) return;
+                // Адаптивный темп (BPM) от накала битвы
+                const bpm = this.tensionLevel === 3 ? 148 : (this.tensionLevel === 2 ? 132 : 116);
+                const secondsPer16th = (60 / bpm) / 4;
+
+                while (this.nextNoteTime < this.ctx.currentTime + 0.12) {
+                    this.playPatternStep(this.step, this.nextNoteTime, secondsPer16th);
+                    this.nextNoteTime += secondsPer16th;
+                    this.step = (this.step + 1) % 16;
+                }
+            }
+
+            playPatternStep(step, time, dur) {
+                try {
+                    // 1. 8-битный пульсирующий Darksynth Бас (на каждую 16-ю)
+                    const bassFreq = this.bassNotes[Math.floor(step / 2) % this.bassNotes.length] * (step % 2 === 0 ? 1 : 2);
+                    const bOsc = this.ctx.createOscillator();
+                    const bFilter = this.ctx.createBiquadFilter();
+                    const bGain = this.ctx.createGain();
+
+                    bOsc.type = 'sawtooth';
+                    bOsc.frequency.setValueAtTime(bassFreq, time);
+
+                    bFilter.type = 'lowpass';
+                    bFilter.frequency.setValueAtTime(this.tensionLevel === 1 ? 380 : (this.tensionLevel === 2 ? 750 : 1200), time);
+
+                    bGain.gain.setValueAtTime(0.065, time);
+                    bGain.gain.exponentialRampToValueAtTime(0.005, time + dur * 0.9);
+
+                    bOsc.connect(bFilter);
+                    bFilter.connect(bGain);
+                    bGain.connect(this.ctx.destination);
+                    bOsc.start(time);
+                    bOsc.stop(time + dur * 0.92);
+
+                    // 2. Арпеджиатор (Square wave 8-bit)
+                    const arpList = this.tensionLevel >= 2 ? this.arpAction : this.arpCalm;
+                    const arpFreq = arpList[step % arpList.length];
+                    if (arpFreq > 0) {
+                        const aOsc = this.ctx.createOscillator();
+                        const aGain = this.ctx.createGain();
+                        aOsc.type = 'square';
+                        aOsc.frequency.setValueAtTime(arpFreq, time);
+
+                        aGain.gain.setValueAtTime(this.tensionLevel === 1 ? 0.025 : 0.04, time);
+                        aGain.gain.exponentialRampToValueAtTime(0.002, time + dur * 0.75);
+
+                        aOsc.connect(aGain);
+                        aGain.connect(this.ctx.destination);
+                        aOsc.start(time);
+                        aOsc.stop(time + dur * 0.8);
+                    }
+
+                    // 3. Боевой Лид-синтезатор при Боссе или Форсаже (Tension 3)
+                    if (this.tensionLevel === 3 && step % 2 === 0) {
+                        const leadFreq = this.bossLead[(step / 2) % this.bossLead.length];
+                        if (leadFreq > 0) {
+                            const lOsc = this.ctx.createOscillator();
+                            const lGain = this.ctx.createGain();
+                            lOsc.type = 'sawtooth';
+                            lOsc.frequency.setValueAtTime(leadFreq, time);
+                            lGain.gain.setValueAtTime(0.045, time);
+                            lGain.gain.exponentialRampToValueAtTime(0.004, time + dur * 1.7);
+                            lOsc.connect(lGain);
+                            lGain.connect(this.ctx.destination);
+                            lOsc.start(time);
+                            lOsc.stop(time + dur * 1.75);
+                        }
+                    }
+
+                    // 4. Синтетическая бочка (Kick) на 0, 4, 8, 12 и малый барабан на 4, 12
+                    if (step % 4 === 0) {
+                        const kOsc = this.ctx.createOscillator();
+                        const kGain = this.ctx.createGain();
+                        kOsc.type = 'sine';
+                        kOsc.frequency.setValueAtTime(125, time);
+                        kOsc.frequency.exponentialRampToValueAtTime(32, time + 0.09);
+                        kGain.gain.setValueAtTime(0.11, time);
+                        kGain.gain.exponentialRampToValueAtTime(0.005, time + 0.095);
+                        kOsc.connect(kGain);
+                        kGain.connect(this.ctx.destination);
+                        kOsc.start(time);
+                        kOsc.stop(time + 0.1);
+                    } else if (this.tensionLevel >= 2 && (step === 4 || step === 12)) {
+                        // Ретро-снейр
+                        const sOsc = this.ctx.createOscillator();
+                        const sGain = this.ctx.createGain();
+                        sOsc.type = 'triangle';
+                        sOsc.frequency.setValueAtTime(220, time);
+                        sOsc.frequency.exponentialRampToValueAtTime(75, time + 0.07);
+                        sGain.gain.setValueAtTime(0.06, time);
+                        sGain.gain.exponentialRampToValueAtTime(0.003, time + 0.075);
+                        sOsc.connect(sGain);
+                        sGain.connect(this.ctx.destination);
+                        sOsc.start(time);
+                        sOsc.stop(time + 0.08);
+                    }
+                } catch (e) {}
+            }
+
+            playSawGrind(isOverdrive = false) {
+                if (!this.sfxEnabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime((isOverdrive ? 230 : 145) + Math.random() * 65, now);
+                    osc.frequency.exponentialRampToValueAtTime(55, now + 0.08);
+                    gain.gain.setValueAtTime(0.11, now);
+                    gain.gain.exponentialRampToValueAtTime(0.002, now + 0.085);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.09);
+                } catch (e) {}
+            }
+
+            playSawLaunch() {
+                if (!this.sfxEnabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(260, now);
+                    osc.frequency.exponentialRampToValueAtTime(920, now + 0.16);
+                    gain.gain.setValueAtTime(0.14, now);
+                    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.17);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.18);
+                } catch (e) {}
+            }
+
+            playDashPulse() {
+                if (!this.sfxEnabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(480, now);
+                    osc.frequency.exponentialRampToValueAtTime(95, now + 0.22);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.23);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.24);
+                } catch (e) {}
+            }
+
+            playPickup() {
+                if (!this.sfxEnabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(560, now);
+                    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.11);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.12);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.12);
+                } catch (e) {}
+            }
+        }
+
+        const audio = new CyberpunkAudioSystem();
+
+        function vibrateDevice(ms = 25) {
+            if (navigator.vibrate) {
+                try { navigator.vibrate(ms); } catch (e) {}
+            }
+        }
+
+        // =========================================================================
+        // 2. P2P СЕТЕВОЙ МЕНЕДЖЕР (PEERJS WEBRTC ДЛЯ GITHUB PAGES / CLOUDFLARE)
+        // =========================================================================
+        class OzoneNetworkManager {
+            constructor() {
+                this.peer = null;
+                this.conn = null;
+                this.isHost = false;
+                this.connected = false;
+                this.mode = 'coop'; // 'coop' или 'pvp'
+                this.roomCode = '';
+                this.remotePlayerState = null;
+            }
+
+            generateShortCode() {
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+                let code = '';
+                for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+                return code;
+            }
+
+            hostRoom(onReady) {
+                if (typeof Peer === 'undefined') {
+                    setLobbyStatus('⚠️ PeerJS загружается, попробуйте через секунду...', '#ffaa00');
+                    return;
+                }
+                this.roomCode = this.generateShortCode();
+                const fullPeerId = `ozonesaw2-room-${this.roomCode}`;
+                setLobbyStatus(`Создание комнаты ${this.roomCode}...`, '#00f3ff');
+
+                if (this.peer) this.peer.destroy();
+                this.peer = new Peer(fullPeerId);
+
+                this.peer.on('open', () => {
+                    this.isHost = true;
+                    onReady(this.roomCode);
+                    setLobbyStatus(`Комната ${this.roomCode} открыта! Ждем друга или начинайте бой.`, '#10b981');
+                });
+
+                this.peer.on('connection', (connection) => {
+                    this.setupConnection(connection);
+                });
+
+                this.peer.on('error', (err) => {
+                    setLobbyStatus(`Ошибка сети: ${err.type}. Можно играть соло!`, '#ff0055');
+                });
+            }
+
+            joinRoom(code) {
+                const cleanCode = (code || '').trim().toUpperCase();
+                if (cleanCode.length !== 4) {
+                    setLobbyStatus('Введите 4-значный код комнаты друга!', '#ffaa00');
+                    return;
+                }
+                if (typeof Peer === 'undefined') {
+                    setLobbyStatus('⚠️ Модуль PeerJS недоступен.', '#ff0055');
+                    return;
+                }
+                this.roomCode = cleanCode;
+                setLobbyStatus(`Подключение к комнате ${cleanCode}...`, '#00f3ff');
+
+                if (this.peer) this.peer.destroy();
+                this.peer = new Peer();
+
+                this.peer.on('open', () => {
+                    this.isHost = false;
+                    const conn = this.peer.connect(`ozonesaw2-room-${cleanCode}`, { reliable: false });
+                    this.setupConnection(conn);
+                });
+
+                this.peer.on('error', () => {
+                    setLobbyStatus(`Не удалось найти комнату ${cleanCode}. Проверьте код!`, '#ff0055');
+                });
+            }
+
+            setupConnection(connection) {
+                this.conn = connection;
+                this.conn.on('open', () => {
+                    this.connected = true;
+                    document.getElementById('netStatusBadge').classList.remove('hidden');
+                    document.getElementById('netStatusBadge').textContent = `${this.mode === 'pvp' ? 'PVP' : 'COOP'} • ${this.roomCode}`;
+                    setLobbyStatus(`✅ Игрок подключен! Выберите героя для старта!`, '#10b981');
+                    showBanner(`🌐 СЕТЕВОЕ СОЕДИНЕНИЕ УСТАНОВЛЕНО (${this.mode === 'pvp' ? 'ДУЭЛЬ PvP' : 'КООП x2'})!`);
+                });
+
+                this.conn.on('data', (data) => {
+                    if (!data || !data.type) return;
+                    if (data.type === 'state') {
+                        this.remotePlayerState = data.payload;
+                        if (!this.isHost && data.payload.mode) {
+                            this.mode = data.payload.mode;
+                        }
+                    } else if (data.type === 'pvpHit') {
+                        // Получение урона от пилы соперника в режиме Дуэли
+                        if (player.invulnTimer <= 0) {
+                            player.hp = Math.max(0, player.hp - data.damage);
+                            player.invulnTimer = 22;
+                            player.vx += data.kx || 0;
+                            player.vy += data.ky || 0;
+                            gameState.screenShake = 10;
+                            vibrateDevice(40);
+                        }
+                    } else if (data.type === 'revive') {
+                        if (player.hp <= 0) {
+                            player.hp = player.maxHp * 0.5;
+                            document.getElementById('gameOverModal').classList.add('hidden');
+                            gameState.running = true;
+                            showBanner('⚡ НАПАРНИК ПЕРЕЗАПУСТИЛ ВАШ ОЗОНОВЫЙ РЕАКТОР! ⚡');
+                        }
+                    }
+                });
+
+                this.conn.on('close', () => {
+                    this.connected = false;
+                    this.remotePlayerState = null;
+                    document.getElementById('netStatusBadge').classList.add('hidden');
+                    showBanner('⚠️ Сетевой игрок отключился');
+                });
+            }
+
+            sendState() {
+                if (!this.connected || !this.conn || !this.conn.open) return;
+                this.conn.send({
+                    type: 'state',
+                    payload: {
+                        x: player.x,
+                        z: player.z,
+                        hp: player.hp,
+                        maxHp: player.maxHp,
+                        faction: gameState.faction,
+                        aimAngle: player.aimAngle,
+                        sawX: player.saw.worldX,
+                        sawZ: player.saw.worldZ,
+                        sawRadius: player.saw.bladeRadius,
+                        overdrive: player.overdriveTimer > 0,
+                        mode: this.mode,
+                        score: gameState.score,
+                        wave: gameState.wave
+                    }
+                });
+            }
+
+            sendPvpHit(damage, kx, ky) {
+                if (this.connected && this.conn && this.conn.open) {
+                    this.conn.send({ type: 'pvpHit', damage, kx, ky });
+                }
+            }
+
+            sendRevive() {
+                if (this.connected && this.conn && this.conn.open) {
+                    this.conn.send({ type: 'revive' });
+                }
+            }
+        }
+
+        const net = new OzoneNetworkManager();
+
+        function setLobbyStatus(msg, color = '#00f3ff') {
+            const el = document.getElementById('lobbyStatusText');
+            if (el) {
+                el.textContent = msg;
+                el.style.color = color;
+            }
+        }
+
+        // =========================================================================
+        // 3. THREE.JS 3D-ДВИЖОК И МОДЕЛИ (ПИЛА O3, КИБЕР-ВИКИНГИ, РУСАЛКИ-ВАМПИРЫ)
+        // =========================================================================
+        const ARENA_HALF_W = 58;
+        const ARENA_HALF_H = 44;
+
+        let scene, camera, renderer;
+        let playerMeshGroup, primarySawMesh, sawArmMesh, droneSawMeshes = [];
+        let remotePlayerGroup, remoteSawMesh;
+        let pointLightOzone;
+
+        const overlayCanvas = document.getElementById('hudOverlayCanvas');
+        const overlayCtx = overlayCanvas.getContext('2d');
+
+        function initThreeJS() {
+            const container = document.getElementById('webglContainer');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x05070f);
+            scene.fog = new THREE.FogExp2(0x05070f, 0.0065);
+
+            camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 1, 350);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.innerHTML = '';
+            container.appendChild(renderer.domElement);
+
+            // Освещение кибер-арены
+            const ambientLight = new THREE.AmbientLight(0x94a3b8, 0.85);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xe0f2fe, 0.9);
+            dirLight.position.set(25, 65, 35);
+            scene.add(dirLight);
+
+            // Динамический неоновый свет от Озоновой Пилы
+            pointLightOzone = new THREE.PointLight(0x00f3ff, 2.2, 42);
+            pointLightOzone.position.set(0, 5, 0);
+            scene.add(pointLightOzone);
+
+            build3DArena();
+            buildPlayerAndSawMeshes();
+            handleResize();
+        }
+
+        function build3DArena() {
+            // Пол арены
+            const floorGeo = new THREE.PlaneGeometry(ARENA_HALF_W * 2, ARENA_HALF_H * 2);
+            const floorMat = new THREE.MeshStandardMaterial({
+                color: 0x080e1e,
+                roughness: 0.7,
+                metalness: 0.3
+            });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            scene.add(floor);
+
+            // Неоновая сетка на полу
+            const grid = new THREE.GridHelper(ARENA_HALF_W * 2, 28, 0x00f3ff, 0x1e293b);
+            grid.position.y = 0.05;
+            grid.scale.z = ARENA_HALF_H / ARENA_HALF_W;
+            scene.add(grid);
+
+            // Светящиеся бортики арены
+            const borderMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff });
+            const wallH = 2.2;
+            const northWall = new THREE.Mesh(new THREE.BoxGeometry(ARENA_HALF_W * 2 + 2, wallH, 1.2), borderMat);
+            northWall.position.set(0, wallH / 2, -ARENA_HALF_H);
+            scene.add(northWall);
+
+            const southWall = northWall.clone();
+            southWall.position.z = ARENA_HALF_H;
+            scene.add(southWall);
+
+            const westWall = new THREE.Mesh(new THREE.BoxGeometry(1.2, wallH, ARENA_HALF_H * 2), borderMat);
+            westWall.position.set(-ARENA_HALF_W, wallH / 2, 0);
+            scene.add(westWall);
+
+            const eastWall = westWall.clone();
+            eastWall.position.x = ARENA_HALF_W;
+            scene.add(eastWall);
+
+            // Кибер-колонны по углам арены
+            const pillarGeo = new THREE.CylinderGeometry(2.2, 2.6, 12, 8);
+            const pillarMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, emissive: 0x004466, metalness: 0.8 });
+            const corners = [
+                [-ARENA_HALF_W, -ARENA_HALF_H],
+                [ARENA_HALF_W, -ARENA_HALF_H],
+                [-ARENA_HALF_W, ARENA_HALF_H],
+                [ARENA_HALF_W, ARENA_HALF_H]
+            ];
+            corners.forEach(([cx, cz]) => {
+                const p = new THREE.Mesh(pillarGeo, pillarMat);
+                p.position.set(cx, 6, cz);
+                scene.add(p);
+            });
+        }
+
+        // Создание 3D-модели Зубчатой Озоновой Пилы O3
+        function create3DOzoneSawMesh(radius = 3.6, isDrone = false) {
+            const group = new THREE.Group();
+
+            // 1. Основной металлический диск
+            const discGeo = new THREE.CylinderGeometry(radius * 0.78, radius * 0.78, 0.35, 24);
+            const discMat = new THREE.MeshStandardMaterial({
+                color: 0x1e293b,
+                metalness: 0.9,
+                roughness: 0.2,
+                emissive: isDrone ? 0x3b0764 : 0x002244
+            });
+            const disc = new THREE.Mesh(discGeo, discMat);
+            group.add(disc);
+
+            // 2. Острые 3D зубья пилы по периметру
+            const teethCount = isDrone ? 10 : 16;
+            const toothGeo = new THREE.ConeGeometry(radius * 0.24, radius * 0.45, 4);
+            const toothMat = new THREE.MeshBasicMaterial({ color: isDrone ? 0xd8b4fe : 0x00f3ff });
+
+            for (let i = 0; i < teethCount; i++) {
+                const angle = (i / teethCount) * Math.PI * 2;
+                const tooth = new THREE.Mesh(toothGeo, toothMat);
+                tooth.position.set(Math.cos(angle) * (radius * 0.88), 0, Math.sin(angle) * (radius * 0.88));
+                tooth.rotation.z = -Math.PI / 2;
+                tooth.rotation.y = -angle + 0.35; // Наклон зуба по ходу распила
+                group.add(tooth);
+            }
+
+            // 3. Неоновое озоновое кольцо и ядро O3
+            const ringGeo = new THREE.TorusGeometry(radius * 0.52, 0.14, 8, 24);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = Math.PI / 2;
+            ring.position.y = 0.22;
+            group.add(ring);
+
+            const coreGeo = new THREE.CylinderGeometry(radius * 0.32, radius * 0.32, 0.5, 16);
+            const coreMat = new THREE.MeshBasicMaterial({ color: isDrone ? 0xa855f7 : 0x00f3ff });
+            const core = new THREE.Mesh(coreGeo, coreMat);
+            group.add(core);
+
+            group.userData = { disc, core, toothMat, radius };
+            return group;
+        }
+
+        // Создание 3D-модели Кибер-Викинга или Русалки-Вампира
+        function createCharacter3DMesh(faction, isBoss = false) {
+            const group = new THREE.Group();
+            const scale = isBoss ? 2.1 : 1.0;
+
+            if (faction === 'viking') {
+                // Торс в титановой броне
+                const bodyGeo = new THREE.CylinderGeometry(1.7 * scale, 2.0 * scale, 3.2 * scale, 10);
+                const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.3 });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 1.6 * scale;
+                group.add(body);
+
+                // Золотые наплечники Вальгаллы
+                const padGeo = new THREE.SphereGeometry(1.1 * scale, 8, 8);
+                const padMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0x451a03, metalness: 0.9 });
+                const leftPad = new THREE.Mesh(padGeo, padMat);
+                leftPad.position.set(-1.8 * scale, 2.6 * scale, 0);
+                const rightPad = leftPad.clone();
+                rightPad.position.x = 1.8 * scale;
+                group.add(leftPad, rightPad);
+
+                // Шлем с кибер-визором
+                const headGeo = new THREE.SphereGeometry(1.45 * scale, 12, 12);
+                const head = new THREE.Mesh(headGeo, bodyMat);
+                head.position.y = 3.8 * scale;
+                group.add(head);
+
+                // Светящийся неоновый визор
+                const visorGeo = new THREE.BoxGeometry(2.1 * scale, 0.55 * scale, 1.2 * scale);
+                const visorMat = new THREE.MeshBasicMaterial({ color: isBoss ? 0xff0055 : 0x00f3ff });
+                const visor = new THREE.Mesh(visorGeo, visorMat);
+                visor.position.set(0, 3.85 * scale, 0.9 * scale);
+                group.add(visor);
+
+                // Огненная борода викинга
+                const beardGeo = new THREE.ConeGeometry(1.2 * scale, 2.2 * scale, 6);
+                const beardMat = new THREE.MeshStandardMaterial({ color: isBoss ? 0xdc2626 : 0xea580c });
+                const beard = new THREE.Mesh(beardGeo, beardMat);
+                beard.rotation.x = Math.PI;
+                beard.position.set(0, 2.5 * scale, 1.15 * scale);
+                group.add(beard);
+
+                // Рога на шлеме
+                const hornGeo = new THREE.ConeGeometry(0.42 * scale, 2.2 * scale, 8);
+                const hornMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+                const hornL = new THREE.Mesh(hornGeo, hornMat);
+                hornL.position.set(-1.6 * scale, 4.7 * scale, 0);
+                hornL.rotation.z = 0.65;
+                const hornR = new THREE.Mesh(hornGeo, hornMat);
+                hornR.position.set(1.6 * scale, 4.7 * scale, 0);
+                hornR.rotation.z = -0.65;
+                group.add(hornL, hornR);
+            } else {
+                // РУСАЛКА-ВАМПИР: изящный торс + чешуйчатый хвост + плащ и клыки
+                const torsoGeo = new THREE.CylinderGeometry(1.35 * scale, 1.65 * scale, 3.0 * scale, 12);
+                const torsoMat = new THREE.MeshStandardMaterial({
+                    color: isBoss ? 0x881337 : 0x0f766e,
+                    emissive: 0x111827,
+                    metalness: 0.5,
+                    roughness: 0.3
+                });
+                const torso = new THREE.Mesh(torsoGeo, torsoMat);
+                torso.position.y = 1.8 * scale;
+                group.add(torso);
+
+                // Русалочий хвост с плавником сзади
+                const tailGeo = new THREE.ConeGeometry(1.4 * scale, 3.2 * scale, 8);
+                const tailMat = new THREE.MeshBasicMaterial({ color: 0xff0055, wireframe: false });
+                const tail = new THREE.Mesh(tailGeo, tailMat);
+                tail.rotation.x = Math.PI / 2.3;
+                tail.position.set(0, 0.8 * scale, -1.8 * scale);
+                group.add(tail);
+
+                // Бледная голова вампира
+                const headGeo = new THREE.SphereGeometry(1.38 * scale, 12, 12);
+                const headMat = new THREE.MeshStandardMaterial({ color: 0x312e81, roughness: 0.4 });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.y = 3.8 * scale;
+                group.add(head);
+
+                // Горящие алые глаза-визоры
+                const eyeGeo = new THREE.BoxGeometry(1.9 * scale, 0.45 * scale, 1.0 * scale);
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0055 });
+                const eyes = new THREE.Mesh(eyeGeo, eyeMat);
+                eyes.position.set(0, 3.9 * scale, 0.85 * scale);
+                group.add(eyes);
+
+                // Уши-плавники сирены
+                const finGeo = new THREE.ConeGeometry(0.55 * scale, 1.9 * scale, 4);
+                const finMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+                const finL = new THREE.Mesh(finGeo, finMat);
+                finL.position.set(-1.55 * scale, 4.1 * scale, 0);
+                finL.rotation.z = 1.1;
+                const finR = new THREE.Mesh(finGeo, finMat);
+                finR.position.set(1.55 * scale, 4.1 * scale, 0);
+                finR.rotation.z = -1.1;
+                group.add(finL, finR);
+            }
+
+            // Кольцо-подсветка под ногами
+            const baseRingGeo = new THREE.RingGeometry(1.9 * scale, 2.35 * scale, 24);
+            const baseRingMat = new THREE.MeshBasicMaterial({
+                color: faction === 'viking' ? 0xffaa00 : 0xff0055,
+                side: THREE.DoubleSide
+            });
+            const baseRing = new THREE.Mesh(baseRingGeo, baseRingMat);
+            baseRing.rotation.x = -Math.PI / 2;
+            baseRing.position.y = 0.12;
+            group.add(baseRing);
+
+            return group;
+        }
+
+        function buildPlayerAndSawMeshes() {
+            if (playerMeshGroup) scene.remove(playerMeshGroup);
+            if (primarySawMesh) scene.remove(primarySawMesh);
+            if (sawArmMesh) scene.remove(sawArmMesh);
+            droneSawMeshes.forEach(m => scene.remove(m));
+            droneSawMeshes = [];
+
+            playerMeshGroup = createCharacter3DMesh(gameState.faction, false);
+            scene.add(playerMeshGroup);
+
+            // Шина-манипулятор, соединяющая героя с Озоновой Пилой
+            const armGeo = new THREE.BoxGeometry(1, 0.35, 0.9);
+            const armMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7 });
+            sawArmMesh = new THREE.Mesh(armGeo, armMat);
+            sawArmMesh.position.y = 1.6;
+            scene.add(sawArmMesh);
+
+            primarySawMesh = create3DOzoneSawMesh(3.8, false);
+            primarySawMesh.position.y = 1.6;
+            scene.add(primarySawMesh);
+
+            // Сетевой напарник / соперник
+            if (!remotePlayerGroup) {
+                remotePlayerGroup = createCharacter3DMesh('mermaid', false);
+                remotePlayerGroup.visible = false;
+                scene.add(remotePlayerGroup);
+
+                remoteSawMesh = create3DOzoneSawMesh(3.6, false);
+                remoteSawMesh.visible = false;
+                scene.add(remoteSawMesh);
+            }
+        }
+
+        function syncDroneMeshes() {
+            while (droneSawMeshes.length < player.upgrades.drones) {
+                const dm = create3DOzoneSawMesh(2.0, true);
+                dm.position.y = 1.6;
+                scene.add(dm);
+                droneSawMeshes.push(dm);
+            }
+        }
+
+        function handleResize() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            overlayCanvas.width = w;
+            overlayCanvas.height = h;
+            if (renderer && camera) {
+                renderer.setSize(w, h);
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+            }
+        }
+        window.addEventListener('resize', handleResize);
+
+        // =========================================================================
+        // 4. ИГРОВОЕ СОСТОЯНИЕ, СБАЛАНСИРОВАННАЯ ПИЛА И АНТИ-ЗАХВАТ
+        // =========================================================================
+        let gameState = {
+            running: false,
+            paused: false,
+            faction: 'viking',
+            score: 0,
+            wave: 1,
+            waveTimer: 0,
+            enemiesKilledInWave: 0,
+            enemiesNeededForWave: 12,
+            skillPoints: 0,
+            bossActive: false,
+            screenShake: 0,
+            time: 0
+        };
+
+        let player = {
+            x: 0,
+            z: 0,
+            vx: 0,
+            vz: 0,
+            radius: 2.3,
+            speed: 0.44,
+            hp: 120,
+            maxHp: 120,
+            ozone: 35,
+            overdriveTimer: 0,
+            invulnTimer: 0,       // Защита после удара (анти-станлок!)
+            grabbedTimer: 0,      // Таймер, если босс или элита схватили героя
+            dashCooldown: 0,      // Перезарядка Озонового Рывка / Освобождения
+            maxDashCooldown: 210, // ~3.5 сек
+            aimAngle: 0,
+            isMoving: false,
+            saw: {
+                baseDistance: 6.8,
+                currentDistance: 6.8,
+                bladeRadius: 3.9,
+                orbitAngle: 0,
+                spinAngle: 0,
+                worldX: 6.8,
+                worldZ: 0,
+                rpm: 9500,
+                damage: 2.4
+            },
+            upgrades: {
+                teeth: 1,
+                reach: 1,
+                ricochet: 1,
+                drones: 0,
+                vamp: 1
+            }
+        };
+
+        let enemies = [];
+        let thrownSaws = [];
+        let projectiles = [];
+        let ozoneCapsules = [];
+        let particles3D = [];
+        let floatingLabels = [];
+
+        // Управление (Клавиатура + Мышь + Мобильный тач-джойстик)
+        const keys = { w: false, a: false, s: false, d: false };
+        const mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2, active: false };
+        const touchJoy = { active: false, id: null, startX: 0, startY: 0, currX: 0, currY: 0, dx: 0, dy: 0 };
+
+        // =========================================================================
+        // 5. СТАРТ ИГРЫ, СПАВН 3D-ВРАГОВ И КАПСУЛ O3
+        // =========================================================================
+        function startGame(selectedFaction) {
+            audio.init();
+            gameState.faction = selectedFaction;
+            gameState.running = true;
+            gameState.paused = false;
+            gameState.score = 0;
+            gameState.wave = 1;
+            gameState.waveTimer = 0;
+            gameState.enemiesKilledInWave = 0;
+            gameState.enemiesNeededForWave = net.connected && net.mode === 'coop' ? 18 : 12;
+            gameState.skillPoints = 0;
+            gameState.bossActive = false;
+
+            player.x = 0;
+            player.z = 0;
+            player.vx = 0;
+            player.vz = 0;
+            player.maxHp = selectedFaction === 'viking' ? 135 : 110;
+            player.hp = player.maxHp;
+            player.speed = selectedFaction === 'viking' ? 0.43 : 0.49;
+            player.ozone = 35;
+            player.overdriveTimer = 0;
+            player.invulnTimer = 30;
+            player.grabbedTimer = 0;
+            player.dashCooldown = 0;
+
+            player.upgrades = { teeth: 1, reach: 1, ricochet: 1, drones: 0, vamp: 1 };
+            player.saw = {
+                baseDistance: selectedFaction === 'viking' ? 7.2 : 6.6,
+                currentDistance: 7.0,
+                bladeRadius: selectedFaction === 'viking' ? 4.1 : 3.7,
+                orbitAngle: 0,
+                spinAngle: 0,
+                worldX: 7,
+                worldZ: 0,
+                rpm: 9500,
+                damage: selectedFaction === 'viking' ? 2.6 : 2.3
+            };
+
+            // Очистка старых 3D-объектов
+            enemies.forEach(e => scene.remove(e.mesh));
+            thrownSaws.forEach(t => scene.remove(t.mesh));
+            projectiles.forEach(p => scene.remove(p.mesh));
+            ozoneCapsules.forEach(c => scene.remove(c.mesh));
+            particles3D.forEach(pt => scene.remove(pt.mesh));
+
+            enemies = [];
+            thrownSaws = [];
+            projectiles = [];
+            ozoneCapsules = [];
+            particles3D = [];
+            floatingLabels = [];
+
+            buildPlayerAndSawMeshes();
+
+            document.getElementById('startModal').classList.add('hidden');
+            document.getElementById('gameOverModal').classList.add('hidden');
+            document.getElementById('hudBar').classList.remove('hidden');
+            document.getElementById('touchControlsWrapper').classList.remove('hidden');
+            document.getElementById('bossHud').classList.add('hidden');
+
+            const nameHud = document.getElementById('playerNameHud');
+            const badge = document.getElementById('factionBadge');
+            if (selectedFaction === 'viking') {
+                nameHud.textContent = 'БЬЁРН';
+                badge.textContent = '🪓';
+                showBanner('⚡ 3D ОЗОНОВАЯ ПИЛА ЗАПУЩЕНА! РУБИ РУСАЛОК-ВАМПИРОВ!');
+            } else {
+                nameHud.textContent = 'КАРМИЛЛА';
+                badge.textContent = '🧜‍♀️';
+                showBanner('⚡ КРОВАВО-ОЗОНОВАЯ ПИЛА В БОЮ! КРУШИ КИБЕР-ВИКИНГОВ!');
+            }
+
+            // Стартовые капсулы нестабильного Озона O3 на арене
+            for (let i = 0; i < 5; i++) {
+                spawnOzoneCapsule(
+                    (Math.random() - 0.5) * (ARENA_HALF_W * 1.5),
+                    (Math.random() - 0.5) * (ARENA_HALF_H * 1.5),
+                    'ozone'
+                );
+            }
+
+            updateHud();
+        }
+
+        function spawnOzoneCapsule(x, z, type = 'ozone') {
+            const geo = type === 'ozone'
+                ? new THREE.OctahedronGeometry(1.25, 0)
+                : new THREE.BoxGeometry(1.5, 1.5, 1.5);
+            const mat = new THREE.MeshBasicMaterial({
+                color: type === 'ozone' ? 0x00f3ff : 0x10b981,
+                wireframe: false
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, 1.4, z);
+            scene.add(mesh);
+
+            ozoneCapsules.push({ x, z, type, mesh, phase: Math.random() * 6.28 });
+        }
+
+        function spawnEnemy(isBoss = false) {
+            // Появление у границ 3D-арены
+            let x, z;
+            if (Math.random() < 0.5) {
+                x = (Math.random() < 0.5 ? -1 : 1) * (ARENA_HALF_W - 3);
+                z = (Math.random() - 0.5) * (ARENA_HALF_H * 1.8);
+            } else {
+                x = (Math.random() - 0.5) * (ARENA_HALF_W * 1.8);
+                z = (Math.random() < 0.5 ? -1 : 1) * (ARENA_HALF_H - 3);
+            }
+
+            const enemyFaction = gameState.faction === 'viking' ? 'mermaid' : 'viking';
+            const coopMult = (net.connected && net.mode === 'coop') ? 1.35 : 1.0;
+            const waveMult = (1 + (gameState.wave - 1) * 0.22) * coopMult;
+
+            if (isBoss) {
+                gameState.bossActive = true;
+                const bossName = enemyFaction === 'mermaid'
+                    ? `КОРОЛЕВА МОРГАНА [УР.${gameState.wave}]`
+                    : `КИБЕР-ЯРЛ РАГНАР [УР.${gameState.wave}]`;
+                const maxHp = Math.round(440 * waveMult);
+                const mesh = createCharacter3DMesh(enemyFaction, true);
+                mesh.position.set(x, 0, z);
+                scene.add(mesh);
+
+                enemies.push({
+                    x, z, vx: 0, vz: 0,
+                    radius: 4.2,
+                    hp: maxHp, maxHp,
+                    speed: 0.24,
+                    isBoss: true,
+                    enemyFaction,
+                    subType: 'boss',
+                    name: bossName,
+                    shootCd: 95,
+                    grabCd: 150,
+                    stunTimer: 0,
+                    burnTimer: 0,
+                    mesh
+                });
+
+                document.getElementById('bossHud').classList.remove('hidden');
+                document.getElementById('bossNameText').textContent = bossName;
+                showBanner(`⚠️ БОСС НА АРЕНЕ: ${bossName}! ИСПОЛЬЗУЙТЕ РЫВОК ПРОТИВ ЗАХВАТА!`);
+                return;
+            }
+
+            const roll = Math.random();
+            let subType = 'grunt';
+            let speed = 0.23 + Math.random() * 0.08;
+            let hp = 32 * waveMult;
+
+            if (roll > 0.74) {
+                subType = 'ranged';
+                speed = 0.18;
+                hp = 38 * waveMult;
+            } else if (roll > 0.45) {
+                subType = 'rusher';
+                speed = 0.33;
+                hp = 26 * waveMult;
+            }
+
+            const mesh = createCharacter3DMesh(enemyFaction, false);
+            mesh.position.set(x, 0, z);
+            scene.add(mesh);
+
+            enemies.push({
+                x, z, vx: 0, vz: 0,
+                radius: 2.1,
+                hp, maxHp: hp,
+                speed,
+                isBoss: false,
+                enemyFaction,
+                subType,
+                shootCd: 85 + Math.random() * 70,
+                grabCd: 0,
+                stunTimer: 0,
+                burnTimer: 0,
+                mesh
+            });
+        }
+
+        // =========================================================================
+        // 6. АКТИВНЫЕ СПОСОБНОСТИ: БРОСОК ПИЛЫ, КОНТР-РЫВОК И ФОРСАЖ O3
+        // =========================================================================
+        function launchSawDisc() {
+            if (!gameState.running || gameState.paused) return;
+            const maxThrown = 1 + Math.floor(player.upgrades.ricochet / 2);
+            if (thrownSaws.length >= maxThrown) return;
+
+            audio.playSawLaunch();
+            vibrateDevice(20);
+
+            const isOverdrive = player.overdriveTimer > 0;
+            const speed = (0.95 + player.upgrades.ricochet * 0.1) * (isOverdrive ? 1.25 : 1.0);
+            const discRadius = (2.8 + player.upgrades.ricochet * 0.25) * (isOverdrive ? 1.2 : 1.0);
+            const mesh = create3DOzoneSawMesh(discRadius, false);
+            mesh.position.set(player.saw.worldX, 1.6, player.saw.worldZ);
+            scene.add(mesh);
+
+            thrownSaws.push({
+                x: player.saw.worldX,
+                z: player.saw.worldZ,
+                vx: Math.cos(player.aimAngle) * speed,
+                vz: Math.sin(player.aimAngle) * speed,
+                radius: discRadius,
+                bounces: 2 + player.upgrades.ricochet,
+                returning: false,
+                damage: player.saw.damage * (1.5 + player.upgrades.ricochet * 0.25),
+                mesh
+            });
+
+            addFloatingLabel(player.x, player.z, 'БРОСОК O₃!', '#00f3ff');
+        }
+
+        // НОВАЯ МЕХАНИКА: ОЗОНОВЫЙ ВЫБРОС / РЫВОК (Мгновенно снимает захват врагов и боссов!)
+        function triggerOzoneDashEscape() {
+            if (!gameState.running || gameState.paused) return;
+            if (player.dashCooldown > 0) return;
+
+            audio.playDashPulse();
+            vibrateDevice(45);
+
+            const wasGrabbed = player.grabbedTimer > 0;
+            player.grabbedTimer = 0;
+            player.invulnTimer = 42; // 0.7 сек полной неуязвимости
+            player.dashCooldown = Math.max(100, player.maxDashCooldown - (player.upgrades.vamp - 1) * 20);
+
+            // Рывок в сторону движения или взгляда
+            const dashAngle = player.aimAngle;
+            player.vx = Math.cos(dashAngle) * 1.45;
+            player.vz = Math.sin(dashAngle) * 1.45;
+            gameState.screenShake = 12;
+
+            // Мощная ударная волна O3 вокруг героя: отбрасывает и оглушает всех схвативших врагов и боссов!
+            const blastRadius = 15.5;
+            enemies.forEach(e => {
+                const dx = e.x - player.x;
+                const dz = e.z - player.z;
+                const dist = Math.hypot(dx, dz) || 1;
+                if (dist < blastRadius) {
+                    const pushForce = e.isBoss ? 1.6 : 2.4;
+                    e.vx = (dx / dist) * pushForce;
+                    e.vz = (dz / dist) * pushForce;
+                    e.stunTimer = e.isBoss ? 55 : 75; // Босс оглушается после срыва его захвата!
+                    e.hp -= player.saw.damage * 2.5;
+                }
+            });
+
+            spawn3DSparks(player.x, player.z, 0x00f3ff, 22);
+            addFloatingLabel(
+                player.x,
+                player.z,
+                wasGrabbed ? '💥 ЗАХВАТ СОРВАН! КОНТР-УДАР O₃!' : '💨 ОЗОНОВЫЙ РЫВОК!',
+                '#10b981'
+            );
+
+            // В коопе рывок рядом с павшим другом оживляет его!
+            if (net.connected && net.mode === 'coop' && net.remotePlayerState && net.remotePlayerState.hp <= 0) {
+                const distFriend = Math.hypot(net.remotePlayerState.x - player.x, net.remotePlayerState.z - player.z);
+                if (distFriend < 14) {
+                    net.sendRevive();
+                    showBanner('⚡ ВЫ ПЕРЕЗАПУСТИЛИ ПИЛУ НАПАРНИКА!');
+                }
+            }
+        }
+
+        // ПЕРЕРАБОТАННАЯ УЛЬТА: Сверх-Озоновый Форсаж (требует движения, сгорает в 3 раза быстрее при стоянии!)
+        function triggerOzoneOverdrive() {
+            if (!gameState.running || gameState.paused) return;
+            if (player.ozone < 100 && player.overdriveTimer <= 0) {
+                addFloatingLabel(player.x, player.z, `СОБЕРИТЕ КАПСУЛЫ O₃ (${Math.floor(player.ozone)}%)`, '#ffaa00');
+                return;
+            }
+            if (player.overdriveTimer > 0) return;
+
+            player.ozone = 0;
+            player.overdriveTimer = 400;
+            player.grabbedTimer = 0;
+            player.invulnTimer = 35;
+            gameState.screenShake = 16;
+            vibrateDevice(70);
+
+            audio.playDashPulse();
+            showBanner('⚡ ФОРСАЖ O₃ АКТИВЕН! ДВИГАЙТЕСЬ, ЧТОБЫ ПОДДЕРЖИВАТЬ БУР ПИЛЫ!');
+        }
+
+        // Покупка сбалансированных апгрейдов в Мастерской
+        window.buyUpgrade = function(type) {
+            if (gameState.skillPoints <= 0) {
+                showBanner('Распилите волну или босса для получения очков Цеха!');
+                return;
+            }
+            if (type === 'drone' && player.upgrades.drones >= 2) {
+                showBanner('Максимум 2 дрона-спутника O₃!');
+                return;
+            }
+
+            gameState.skillPoints--;
+            audio.playPickup();
+
+            if (type === 'teeth') {
+                player.upgrades.teeth++;
+                player.saw.damage += 0.55;
+                addFloatingLabel(player.x, player.z, 'АЛМАЗНЫЕ ЗУБЬЯ O₃ + ОЖОГ!', '#00f3ff');
+            } else if (type === 'reach') {
+                player.upgrades.reach++;
+                player.saw.baseDistance = Math.min(11.5, player.saw.baseDistance + 0.8);
+                player.saw.bladeRadius = Math.min(5.2, player.saw.bladeRadius + 0.25);
+                addFloatingLabel(player.x, player.z, 'ВЫЛЕТ ШИНЫ ПИЛЫ УВЕЛИЧЕН!', '#ffaa00');
+            } else if (type === 'ricochet') {
+                player.upgrades.ricochet++;
+                addFloatingLabel(player.x, player.z, 'РИКОШЕТ ДИСКА УСИЛЕН!', '#38bdf8');
+            } else if (type === 'drone') {
+                player.upgrades.drones++;
+                syncDroneMeshes();
+                addFloatingLabel(player.x, player.z, '+1 МИНИ-ДРОН СПУТНИК O₃!', '#a855f7');
+            } else if (type === 'vamp') {
+                player.upgrades.vamp++;
+                player.maxHp += 25;
+                player.hp = Math.min(player.maxHp, player.hp + 40);
+                addFloatingLabel(player.x, player.z, '+25 ХП И БЫСТРЫЙ РЫВОК!', '#ff0055');
+            }
+
+            updateUpgradeModalUI();
+            updateHud();
+        };
+
+        function updateUpgradeModalUI() {
+            document.getElementById('modalSkillPoints').textContent = `ОЧКОВ: ${gameState.skillPoints}`;
+            document.getElementById('upgTeeth').textContent = player.upgrades.teeth;
+            document.getElementById('upgReach').textContent = player.upgrades.reach;
+            document.getElementById('upgRicochet').textContent = player.upgrades.ricochet;
+            document.getElementById('upgDrone').textContent = `${player.upgrades.drones}/2`;
+            document.getElementById('upgVamp').textContent = player.upgrades.vamp;
+        }
+
+        // =========================================================================
+        // 7. ГЛАВНЫЙ ЦИКЛ ФИЗИКИ, БОЯ И СИНХРОНИЗАЦИИ
+        // =========================================================================
+        function spawn3DSparks(x, z, hexColor = 0x00f3ff, count = 7) {
+            const geo = new THREE.BoxGeometry(0.38, 0.38, 0.38);
+            const mat = new THREE.MeshBasicMaterial({ color: hexColor });
+            for (let i = 0; i < count; i++) {
+                const m = new THREE.Mesh(geo, mat);
+                m.position.set(x, 1.5 + Math.random(), z);
+                scene.add(m);
+                const angle = Math.random() * Math.PI * 2;
+                const spd = 0.2 + Math.random() * 0.55;
+                particles3D.push({
+                    mesh: m,
+                    vx: Math.cos(angle) * spd,
+                    vy: 0.15 + Math.random() * 0.25,
+                    vz: Math.sin(angle) * spd,
+                    life: 16 + Math.floor(Math.random() * 10)
+                });
+            }
+        }
+
+        function addFloatingLabel(x, z, text, color = '#00f3ff') {
+            floatingLabels.push({ x, z, y: 3.5, text, color, life: 42, maxLife: 42 });
+        }
+
+        function updateGame() {
+            if (!gameState.running || gameState.paused) return;
+            gameState.time++;
+
+            if (gameState.screenShake > 0) {
+                gameState.screenShake *= 0.86;
+                if (gameState.screenShake < 0.2) gameState.screenShake = 0;
+            }
+            if (player.invulnTimer > 0) player.invulnTimer--;
+            if (player.dashCooldown > 0) player.dashCooldown--;
+            if (player.grabbedTimer > 0) player.grabbedTimer--;
+
+            // 1. Вектор движения игрока (WASD или сенсорный джойстик)
+            let mx = 0, mz = 0;
+            if (keys.w) mz -= 1;
+            if (keys.s) mz += 1;
+            if (keys.a) mx -= 1;
+            if (keys.d) mx += 1;
+
+            if (touchJoy.active) {
+                mx = touchJoy.dx;
+                mz = touchJoy.dy;
+            } else if (mx !== 0 && mz !== 0) {
+                const inv = 1 / Math.SQRT2;
+                mx *= inv;
+                mz *= inv;
+            }
+
+            player.isMoving = Math.hypot(mx, mz) > 0.12;
+
+            // Если босс или элита схватили героя — скорость снижена, пока игрок не нажмет «РЫВОК / ВЫРВАТЬСЯ»
+            const grabPenalty = player.grabbedTimer > 0 ? 0.35 : 1.0;
+            const overdriveSpeedMult = player.overdriveTimer > 0 ? 1.38 : 1.0;
+
+            player.x += mx * player.speed * grabPenalty * overdriveSpeedMult + player.vx;
+            player.z += mz * player.speed * grabPenalty * overdriveSpeedMult + player.vz;
+            player.vx *= 0.82;
+            player.vz *= 0.82;
+
+            // Границы арены
+            player.x = Math.max(-ARENA_HALF_W + 2.5, Math.min(ARENA_HALF_W - 2.5, player.x));
+            player.z = Math.max(-ARENA_HALF_H + 2.5, Math.min(ARENA_HALF_H - 2.5, player.z));
+
+            // 2. Умное наведение и выпад Озоновой Пилы (делает 1 базовую пилу мощной и отзывчивой!)
+            if (touchJoy.active && player.isMoving) {
+                player.aimAngle = Math.atan2(mz, mx);
+            } else if (!touchJoy.active && mouse.active) {
+                // На ПК переводим положение мыши относительно центра экрана
+                const cx = window.innerWidth / 2;
+                const cy = window.innerHeight / 2;
+                player.aimAngle = Math.atan2(mouse.y - cy, mouse.x - cx);
+            } else if (enemies.length > 0) {
+                // Авто-ориентация на ближайшего врага на телефоне, если палец отпущен
+                let nearest = enemies[0], minDist = 999;
+                for (const e of enemies) {
+                    const d = Math.hypot(e.x - player.x, e.z - player.z);
+                    if (d < minDist) { minDist = d; nearest = e; }
+                }
+                player.aimAngle = Math.atan2(nearest.z - player.z, nearest.x - player.x);
+            }
+
+            // Логика Сверх-Озонового Форсажа (Ульты): если стоять на месте — заряд сгорает в 3 раза быстрее!
+            const isOverdrive = player.overdriveTimer > 0;
+            if (isOverdrive) {
+                player.overdriveTimer -= player.isMoving ? 1 : 3.2;
+                if (player.overdriveTimer < 0) player.overdriveTimer = 0;
+                player.saw.rpm = 19500;
+            } else {
+                player.saw.rpm = 9500 + Math.round(player.ozone * 50);
+            }
+
+            // Основная Озоновая Пила совершает маятниковый распил вокруг направления прицела/движения!
+            player.saw.spinAngle += isOverdrive ? 0.65 : 0.38;
+            player.saw.orbitAngle += isOverdrive ? 0.22 : 0.14;
+
+            const sweepOffset = isOverdrive
+                ? Math.sin(player.saw.orbitAngle * 1.5) * 0.35
+                : Math.sin(player.saw.orbitAngle) * 0.85;
+            const currentSawAngle = player.aimAngle + sweepOffset;
+
+            // При движении вперед шина пилы выдвигается дальше (эффективный выпад одной пилой!)
+            const targetDist = player.saw.baseDistance + (player.isMoving ? 1.8 : 0) + (isOverdrive ? 2.2 : 0);
+            player.saw.currentDistance += (targetDist - player.saw.currentDistance) * 0.2;
+
+            player.saw.worldX = player.x + Math.cos(currentSawAngle) * player.saw.currentDistance;
+            player.saw.worldZ = player.z + Math.sin(currentSawAngle) * player.saw.currentDistance;
+
+            const activeSawRadius = player.saw.bladeRadius * (isOverdrive ? 1.45 : 1.0);
+
+            // Координаты малых дронов-спутников (если куплены в Цехе)
+            const dronePositions = [];
+            for (let d = 0; d < player.upgrades.drones; d++) {
+                const da = -player.saw.orbitAngle * 1.6 + d * Math.PI;
+                dronePositions.push({
+                    x: player.x + Math.cos(da) * 4.8,
+                    z: player.z + Math.sin(da) * 4.8,
+                    radius: 2.0
+                });
+            }
+
+            // 3. Полет и рикошет брошенных дисков пилы
+            for (let i = thrownSaws.length - 1; i >= 0; i--) {
+                const ts = thrownSaws[i];
+                ts.mesh.rotation.y += 0.55;
+
+                if (!ts.returning) {
+                    ts.x += ts.vx;
+                    ts.z += ts.vz;
+
+                    let bounced = false;
+                    if (ts.x < -ARENA_HALF_W + ts.radius || ts.x > ARENA_HALF_W - ts.radius) {
+                        ts.vx *= -1;
+                        bounced = true;
+                    }
+                    if (ts.z < -ARENA_HALF_H + ts.radius || ts.z > ARENA_HALF_H - ts.radius) {
+                        ts.vz *= -1;
+                        bounced = true;
+                    }
+                    if (bounced) {
+                        ts.bounces--;
+                        spawn3DSparks(ts.x, ts.z, 0x00f3ff, 5);
+                        if (ts.bounces <= 0) ts.returning = true;
+                    }
+                } else {
+                    const dx = player.x - ts.x;
+                    const dz = player.z - ts.z;
+                    const dist = Math.hypot(dx, dz) || 1;
+                    if (dist < player.radius + ts.radius) {
+                        scene.remove(ts.mesh);
+                        thrownSaws.splice(i, 1);
+                        continue;
+                    }
+                    ts.x += (dx / dist) * 1.35;
+                    ts.z += (dz / dist) * 1.35;
+                }
+                ts.mesh.position.set(ts.x, 1.6, ts.z);
+            }
+
+            // 4. Периодический спавн капсул нестабильного Озона O3 (чтобы игрок двигался по арене!)
+            gameState.waveTimer++;
+            if (ozoneCapsules.length < 6 && gameState.waveTimer % 95 === 0) {
+                spawnOzoneCapsule(
+                    (Math.random() - 0.5) * (ARENA_HALF_W * 1.6),
+                    (Math.random() - 0.5) * (ARENA_HALF_H * 1.6),
+                    'ozone'
+                );
+            }
+
+            // Спавн врагов
+            const maxEnemies = Math.min(24, (net.connected && net.mode === 'coop' ? 10 : 6) + gameState.wave * 2);
+            if (enemies.length < maxEnemies && gameState.waveTimer % 45 === 0) {
+                spawnEnemy(false);
+            }
+
+            // 5. Обновление врагов, проверка распила и защита от зажима
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const e = enemies[i];
+
+                // Озоновый ожог от прокачанных зубьев
+                if (e.burnTimer > 0) {
+                    e.burnTimer--;
+                    e.hp -= 0.08 * player.upgrades.teeth;
+                }
+
+                if (e.stunTimer > 0) {
+                    e.stunTimer--;
+                    e.x += e.vx;
+                    e.z += e.vz;
+                    e.vx *= 0.85;
+                    e.vz *= 0.85;
+                } else {
+                    // Выбор цели (ближайший живой игрок в коопе/PvP)
+                    let tx = player.x, tz = player.z;
+                    if (net.connected && net.remotePlayerState && net.remotePlayerState.hp > 0) {
+                        const dLocal = Math.hypot(player.x - e.x, player.z - e.z);
+                        const dRemote = Math.hypot(net.remotePlayerState.x - e.x, net.remotePlayerState.z - e.z);
+                        if (dRemote < dLocal) {
+                            tx = net.remotePlayerState.x;
+                            tz = net.remotePlayerState.z;
+                        }
+                    }
+
+                    const dx = tx - e.x;
+                    const dz = tz - e.z;
+                    const dist = Math.hypot(dx, dz) || 1;
+
+                    e.x += (dx / dist) * e.speed + e.vx;
+                    e.z += (dz / dist) * e.speed + e.vz;
+                    e.vx *= 0.82;
+                    e.vz *= 0.82;
+                    e.mesh.rotation.y = Math.atan2(dx, dz);
+
+                    // Стрельба дистанционных врагов и босса
+                    if (e.subType === 'ranged' || e.isBoss) {
+                        e.shootCd--;
+                        if (e.shootCd <= 0) {
+                            const angle = Math.atan2(dz, dx);
+                            const count = e.isBoss ? 3 : 1;
+                            for (let s = 0; s < count; s++) {
+                                const spread = e.isBoss ? (s - 1) * 0.26 : 0;
+                                const pGeo = new THREE.SphereGeometry(e.isBoss ? 0.85 : 0.6, 8, 8);
+                                const pMat = new THREE.MeshBasicMaterial({
+                                    color: e.enemyFaction === 'mermaid' ? 0xff0055 : 0xffaa00
+                                });
+                                const pMesh = new THREE.Mesh(pGeo, pMat);
+                                pMesh.position.set(e.x, 1.6, e.z);
+                                scene.add(pMesh);
+
+                                projectiles.push({
+                                    x: e.x, z: e.z,
+                                    vx: Math.cos(angle + spread) * (e.isBoss ? 0.56 : 0.45),
+                                    vz: Math.sin(angle + spread) * (e.isBoss ? 0.56 : 0.45),
+                                    radius: e.isBoss ? 0.85 : 0.6,
+                                    damage: e.isBoss ? 14 : 9,
+                                    mesh: pMesh
+                                });
+                            }
+                            e.shootCd = e.isBoss ? 80 : 125;
+                        }
+                    }
+                }
+
+                // Ограничение арены для врагов
+                e.x = Math.max(-ARENA_HALF_W + 2, Math.min(ARENA_HALF_W - 2, e.x));
+                e.z = Math.max(-ARENA_HALF_H + 2, Math.min(ARENA_HALF_H - 2, e.z));
+                e.mesh.position.set(e.x, 0, e.z);
+
+                // ПРОВЕРКА 1: Распил основной 3D Озоновой Пилой
+                const distPrimarySaw = Math.hypot(e.x - player.saw.worldX, e.z - player.saw.worldZ);
+                if (distPrimarySaw < e.radius + activeSawRadius) {
+                    const dmg = player.saw.damage * (isOverdrive ? 2.1 : 1.0);
+                    e.hp -= dmg;
+                    e.burnTimer = 45;
+
+                    // Контролируемое отталкивание врага зубьями пилы
+                    const pushAngle = Math.atan2(e.z - player.saw.worldZ, e.x - player.saw.worldX);
+                    const knockForce = 0.25 + player.upgrades.reach * 0.05;
+                    e.vx = Math.cos(pushAngle) * knockForce;
+                    e.vz = Math.sin(pushAngle) * knockForce;
+
+                    if (gameState.time % 5 === 0) {
+                        audio.playSawGrind(isOverdrive);
+                        vibrateDevice(12);
+                        spawn3DSparks(
+                            (e.x + player.saw.worldX) / 2,
+                            (e.z + player.saw.worldZ) / 2,
+                            e.enemyFaction === 'mermaid' ? 0xff0055 : 0xffaa00,
+                            3
+                        );
+                    }
+                }
+
+                // ПРОВЕРКА 2: Урон от мини-дронов спутников (умеренный урон поддержки)
+                for (const dp of dronePositions) {
+                    if (Math.hypot(e.x - dp.x, e.z - dp.z) < e.radius + dp.radius) {
+                        e.hp -= player.saw.damage * 0.42;
+                    }
+                }
+
+                // ПРОВЕРКА 3: Распил запущенным рикошетящим диском
+                for (const ts of thrownSaws) {
+                    if (Math.hypot(e.x - ts.x, e.z - ts.z) < e.radius + ts.radius) {
+                        e.hp -= ts.damage * 0.35;
+                        if (gameState.time % 4 === 0) {
+                            audio.playSawGrind(true);
+                            spawn3DSparks(e.x, e.z, 0x00f3ff, 3);
+                        }
+                    }
+                }
+
+                // ПРОВЕРКА 4: Контакт врага с героем (с защитой от зажима и индикатором захвата!)
+                const distHero = Math.hypot(e.x - player.x, e.z - player.z);
+                if (distHero < e.radius + player.radius) {
+                    if (player.invulnTimer <= 0) {
+                        player.hp -= e.isBoss ? 14 : 8;
+                        player.invulnTimer = 36; // 0.6 секунды неуязвимости после удара (никакого мгновенного слива!)
+                        gameState.screenShake = 8;
+                        vibrateDevice(35);
+
+                        // Если это босс или рашер — накладывает кратковременный захват, который легко сорвать кнопкой РЫВОК
+                        if (e.isBoss || e.subType === 'rusher') {
+                            player.grabbedTimer = 75;
+                        }
+
+                        // Авто-отталкивание обычных врагов при ударе, чтобы не зажимали в углу
+                        const awayAngle = Math.atan2(e.z - player.z, e.x - player.x);
+                        e.vx = Math.cos(awayAngle) * 0.85;
+                        e.vz = Math.sin(awayAngle) * 0.85;
+                        spawn3DSparks(player.x, player.z, 0xff0055, 6);
+                    }
+                }
+
+                if (e.isBoss) {
+                    const pct = Math.max(0, Math.round((e.hp / e.maxHp) * 100));
+                    document.getElementById('bossHpBar').style.width = `${pct}%`;
+                    document.getElementById('bossHpPercent').textContent = `${pct}%`;
+                }
+
+                // Гибель распиленного врага
+                if (e.hp <= 0) {
+                    spawn3DSparks(e.x, e.z, e.enemyFaction === 'mermaid' ? 0xff0055 : 0xffaa00, e.isBoss ? 28 : 10);
+                    spawn3DSparks(e.x, e.z, 0x00f3ff, e.isBoss ? 20 : 6);
+                    scene.remove(e.mesh);
+
+                    // Вампиризм от распила
+                    const heal = (gameState.faction === 'mermaid' ? 2.6 : 1.5) * player.upgrades.vamp;
+                    player.hp = Math.min(player.maxHp, player.hp + heal);
+
+                    // Выпадение капсулы Озона O3 (Ульта заряжается ТОЛЬКО от сбора капсул в движении!)
+                    if (Math.random() < 0.55 || e.isBoss) {
+                        spawnOzoneCapsule(e.x, e.z, Math.random() < 0.8 ? 'ozone' : 'hp');
+                    }
+
+                    if (e.isBoss) {
+                        gameState.score += 1500;
+                        gameState.skillPoints += 2;
+                        gameState.bossActive = false;
+                        player.grabbedTimer = 0;
+                        document.getElementById('bossHud').classList.add('hidden');
+                        showBanner('🏆 БОСС РАСПИЛЕН! +2 ОЧКА МОДИФИКАЦИИ В ЦЕХЕ!');
+                    } else {
+                        gameState.score += 120;
+                        gameState.enemiesKilledInWave++;
+                    }
+
+                    enemies.splice(i, 1);
+
+                    if (gameState.enemiesKilledInWave >= gameState.enemiesNeededForWave && !gameState.bossActive) {
+                        advanceWave();
+                    }
+                }
+            }
+
+            // 6. PvP-Дуэль: столкновение Озоновых Пил игроков и распил соперника!
+            if (net.connected && net.mode === 'pvp' && net.remotePlayerState && net.remotePlayerState.hp > 0) {
+                const rp = net.remotePlayerState;
+                // Столкновение двух Озоновых Пил (Искры и отскок!)
+                const sawClashDist = Math.hypot(player.saw.worldX - rp.sawX, player.saw.worldZ - rp.sawZ);
+                if (sawClashDist < activeSawRadius + (rp.sawRadius || 3.8)) {
+                    audio.playSawGrind(true);
+                    vibrateDevice(30);
+                    spawn3DSparks((player.saw.worldX + rp.sawX) / 2, (player.saw.worldZ + rp.sawZ) / 2, 0xffffff, 6);
+                    const recoilAngle = Math.atan2(player.z - rp.z, player.x - rp.x);
+                    player.vx += Math.cos(recoilAngle) * 0.45;
+                    player.vz += Math.sin(recoilAngle) * 0.45;
+                    addFloatingLabel(player.saw.worldX, player.saw.worldZ, '⚡ СТОЛКНОВЕНИЕ ПИЛ!', '#ffaa00');
+                }
+
+                // Попадание нашей пилой по телу соперника
+                const hitEnemyPlayerDist = Math.hypot(player.saw.worldX - rp.x, player.saw.worldZ - rp.z);
+                if (hitEnemyPlayerDist < activeSawRadius + 2.3 && gameState.time % 8 === 0) {
+                    const pushA = Math.atan2(rp.z - player.z, rp.x - player.x);
+                    net.sendPvpHit(player.saw.damage * 2.2, Math.cos(pushA) * 0.6, Math.sin(pushA) * 0.6);
+                    spawn3DSparks(rp.x, rp.z, 0xff0055, 6);
+                    addFloatingLabel(rp.x, rp.z, 'РАСПИЛ СОПЕРНИКА!', '#ff0055');
+                }
+            }
+
+            // 7. Вражеские снаряды (пила может их распиливать!)
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.x += p.vx;
+                p.z += p.vz;
+                p.mesh.position.set(p.x, 1.6, p.z);
+
+                // Распил снаряда пилой
+                if (Math.hypot(p.x - player.saw.worldX, p.z - player.saw.worldZ) < p.radius + activeSawRadius) {
+                    spawn3DSparks(p.x, p.z, 0x00f3ff, 4);
+                    scene.remove(p.mesh);
+                    projectiles.splice(i, 1);
+                    continue;
+                }
+
+                if (Math.hypot(p.x - player.x, p.z - player.z) < p.radius + player.radius) {
+                    if (player.invulnTimer <= 0) {
+                        player.hp -= p.damage;
+                        player.invulnTimer = 25;
+                        gameState.screenShake = 6;
+                        vibrateDevice(25);
+                    }
+                    scene.remove(p.mesh);
+                    projectiles.splice(i, 1);
+                    continue;
+                }
+
+                if (Math.abs(p.x) > ARENA_HALF_W + 4 || Math.abs(p.z) > ARENA_HALF_H + 4) {
+                    scene.remove(p.mesh);
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            // 8. Сбор нестабильных капсул Озона O3
+            for (let i = ozoneCapsules.length - 1; i >= 0; i--) {
+                const c = ozoneCapsules[i];
+                c.phase += 0.08;
+                c.mesh.rotation.y += 0.06;
+                c.mesh.position.y = 1.4 + Math.sin(c.phase) * 0.35;
+
+                const dist = Math.hypot(player.x - c.x, player.z - c.z);
+                if (dist < 8.5) {
+                    c.x += ((player.x - c.x) / dist) * 0.48;
+                    c.z += ((player.z - c.z) / dist) * 0.48;
+                    c.mesh.position.x = c.x;
+                    c.mesh.position.z = c.z;
+                }
+
+                if (dist < player.radius + 1.5) {
+                    audio.playPickup();
+                    if (c.type === 'ozone') {
+                        player.ozone = Math.min(100, player.ozone + 20);
+                        addFloatingLabel(c.x, c.z, '+20% ОЗОН O₃', '#00f3ff');
+                    } else {
+                        player.hp = Math.min(player.maxHp, player.hp + 30);
+                        addFloatingLabel(c.x, c.z, '+30 ХП', '#10b981');
+                    }
+                    scene.remove(c.mesh);
+                    ozoneCapsules.splice(i, 1);
+                }
+            }
+
+            // 9. Частицы 3D-искр и всплывающие подписи
+            for (let i = particles3D.length - 1; i >= 0; i--) {
+                const pt = particles3D[i];
+                pt.mesh.position.x += pt.vx;
+                pt.mesh.position.y += pt.vy;
+                pt.mesh.position.z += pt.vz;
+                pt.vy -= 0.018;
+                pt.life--;
+                if (pt.life <= 0) {
+                    scene.remove(pt.mesh);
+                    particles3D.splice(i, 1);
+                }
+            }
+
+            for (let i = floatingLabels.length - 1; i >= 0; i--) {
+                const fl = floatingLabels[i];
+                fl.y += 0.06;
+                fl.life--;
+                if (fl.life <= 0) floatingLabels.splice(i, 1);
+            }
+
+            // 10. Обновление 3D-трансформаций игрока, пилы и камеры
+            playerMeshGroup.position.set(player.x, 0, player.z);
+            playerMeshGroup.rotation.y = -player.aimAngle + Math.PI / 2;
+            // Визуальное мигание при неуязвимости после удара
+            playerMeshGroup.visible = player.invulnTimer % 4 < 3;
+
+            primarySawMesh.position.set(player.saw.worldX, 1.6, player.saw.worldZ);
+            primarySawMesh.rotation.y = player.saw.spinAngle;
+            const sawScale = isOverdrive ? 1.45 : (player.saw.bladeRadius / 3.8);
+            primarySawMesh.scale.set(sawScale, 1, sawScale);
+
+            // Обновление 3D-шины от героя к пиле
+            const midX = (player.x + player.saw.worldX) / 2;
+            const midZ = (player.z + player.saw.worldZ) / 2;
+            const armLen = Math.hypot(player.saw.worldX - player.x, player.saw.worldZ - player.z);
+            sawArmMesh.position.set(midX, 1.6, midZ);
+            sawArmMesh.scale.x = Math.max(0.5, armLen);
+            sawArmMesh.rotation.y = -Math.atan2(player.saw.worldZ - player.z, player.saw.worldX - player.x);
+
+            // Обновление мини-дронов
+            for (let d = 0; d < droneSawMeshes.length; d++) {
+                const dp = dronePositions[d];
+                if (dp) {
+                    droneSawMeshes[d].position.set(dp.x, 1.6, dp.z);
+                    droneSawMeshes[d].rotation.y -= 0.5;
+                }
+            }
+
+            pointLightOzone.position.set(player.saw.worldX, 5, player.saw.worldZ);
+            pointLightOzone.color.setHex(isOverdrive ? 0xffaa00 : 0x00f3ff);
+
+            // Сетевой игрок
+            if (net.connected && net.remotePlayerState) {
+                const rp = net.remotePlayerState;
+                remotePlayerGroup.visible = rp.hp > 0;
+                remoteSawMesh.visible = rp.hp > 0;
+                remotePlayerGroup.position.set(rp.x, 0, rp.z);
+                remoteSawMesh.position.set(rp.sawX || rp.x + 5, 1.6, rp.sawZ || rp.z);
+                remoteSawMesh.rotation.y += 0.45;
+            } else {
+                remotePlayerGroup.visible = false;
+                remoteSawMesh.visible = false;
+            }
+
+            // Адаптивная 3D-камера под экран смартфона (выше в портретном режиме для полного обзора)
+            const aspect = window.innerWidth / window.innerHeight;
+            const camHeight = aspect < 1 ? 66 : 48;
+            const camZOffset = aspect < 1 ? 36 : 28;
+            const shakeX = (Math.random() - 0.5) * gameState.screenShake * 0.25;
+            const shakeZ = (Math.random() - 0.5) * gameState.screenShake * 0.25;
+
+            camera.position.x += (player.x * 0.75 + shakeX - camera.position.x) * 0.14;
+            camera.position.y += (camHeight - camera.position.y) * 0.1;
+            camera.position.z += (player.z * 0.75 + camZOffset + shakeZ - camera.position.z) * 0.14;
+            camera.lookAt(player.x * 0.8, 0, player.z * 0.8);
+
+            // 11. Адаптивная музыка накала (Tension System)
+            if (gameState.bossActive || isOverdrive || (net.connected && net.mode === 'pvp')) {
+                audio.tensionLevel = 3;
+            } else if (enemies.length >= 9 || player.hp < player.maxHp * 0.4) {
+                audio.tensionLevel = 2;
+            } else {
+                audio.tensionLevel = 1;
+            }
+
+            // Сетевая отправка
+            if (gameState.time % 2 === 0) {
+                net.sendState();
+            }
+
+            // Проверка гибели
+            if (player.hp <= 0) {
+                player.hp = 0;
+                endGame();
+            }
+
+            updateHud();
+        }
+
+        function advanceWave() {
+            gameState.wave++;
+            gameState.enemiesKilledInWave = 0;
+            gameState.enemiesNeededForWave = Math.round(gameState.enemiesNeededForWave * 1.25);
+            gameState.skillPoints++;
+
+            addFloatingLabel(player.x, player.z, `ВОЛНА ${gameState.wave}! +1 ОЧКО ЦЕХА`, '#ffaa00');
+            if (gameState.wave % 2 === 0) {
+                spawnEnemy(true);
+            } else {
+                showBanner(`🌊 ВОЛНА ${gameState.wave}! ОТКРОЙТЕ ЦЕХ ДЛЯ ПРОКАЧКИ ПИЛЫ!`);
+            }
+        }
+
+        function updateHud() {
+            const hpPct = Math.max(0, Math.round((player.hp / player.maxHp) * 100));
+            document.getElementById('hpBar').style.width = `${hpPct}%`;
+            document.getElementById('hpText').textContent = `${Math.ceil(player.hp)}/${player.maxHp}`;
+
+            const ozPct = Math.min(100, Math.round(player.ozone));
+            document.getElementById('ozoneBar').style.width = player.overdriveTimer > 0
+                ? `${Math.round((player.overdriveTimer / 400) * 100)}%`
+                : `${ozPct}%`;
+            document.getElementById('ozoneText').textContent = player.overdriveTimer > 0
+                ? (player.isMoving ? '⚡ ФОРСАЖ O₃!' : '⚠️ ДВИГАЙСЯ!')
+                : `O₃: ${ozPct}%`;
+
+            document.getElementById('sawRpmText').textContent = `${player.saw.rpm} ОБ`;
+            document.getElementById('scoreText').textContent = String(gameState.score).padStart(4, '0');
+            document.getElementById('waveBadge').textContent = `В.${gameState.wave}`;
+            document.getElementById('skillPointsBadge').textContent = gameState.skillPoints;
+
+            // Кнопка Рывка / Анти-захвата
+            const btnDash = document.getElementById('btnDashEscape');
+            const dashCdText = document.getElementById('dashCdText');
+            const grabBanner = document.getElementById('grabWarningBanner');
+
+            if (player.grabbedTimer > 0) {
+                grabBanner.classList.remove('hidden');
+                btnDash.classList.add('grab-alert-btn');
+                dashCdText.textContent = '⚡ ВЫРВАТЬСЯ!';
+            } else {
+                grabBanner.classList.add('hidden');
+                btnDash.classList.remove('grab-alert-btn');
+                if (player.dashCooldown > 0) {
+                    btnDash.classList.add('opacity-50');
+                    dashCdText.textContent = `${(player.dashCooldown / 60).toFixed(1)}С`;
+                } else {
+                    btnDash.classList.remove('opacity-50');
+                    dashCdText.textContent = 'ГОТОВО';
+                }
+            }
+
+            // Кнопка Ульты
+            const btnUlt = document.getElementById('btnOverdrive');
+            const ultSub = document.getElementById('ultBtnSub');
+            if (player.ozone >= 100 || player.overdriveTimer > 0) {
+                btnUlt.classList.remove('opacity-50');
+                btnUlt.classList.add('animate-pulse');
+                ultSub.textContent = player.overdriveTimer > 0 ? 'В ДВИЖЕНИИ!' : 'ГОТОВО [E]';
+            } else {
+                btnUlt.classList.add('opacity-50');
+                btnUlt.classList.remove('animate-pulse');
+                ultSub.textContent = `${ozPct}% O₃`;
+            }
+        }
+
+        function endGame() {
+            gameState.running = false;
+            document.getElementById('grabWarningBanner').classList.add('hidden');
+            document.getElementById('gameOverModal').classList.remove('hidden');
+            document.getElementById('endFaction').textContent = gameState.faction === 'viking'
+                ? 'Кибер-Викинг Бьёрн'
+                : 'Русалка-Вампир Кармилла';
+            document.getElementById('endWave').textContent = gameState.wave;
+            document.getElementById('endScore').textContent = gameState.score;
+
+            if (net.connected && net.mode === 'coop') {
+                document.getElementById('endSubtitle').textContent = 'Напарник может оживить вас своим Озоновым Рывком рядом с вами!';
+            } else {
+                document.getElementById('endSubtitle').textContent = 'Битва была легендарной!';
+            }
+        }
+
+        // =========================================================================
+        // 8. 2D ОВЕРЛЕЙ ПОВЕРХ 3D-СЦЕНЫ (ПОЛОСКИ ХП, ДЖОЙСТИК, ТЕКСТ УРОНА)
+        // =========================================================================
+        function project3DTo2D(x, y, z) {
+            const v = new THREE.Vector3(x, y, z);
+            v.project(camera);
+            return {
+                x: (v.x * 0.5 + 0.5) * overlayCanvas.width,
+                y: (-v.y * 0.5 + 0.5) * overlayCanvas.height
+            };
+        }
+
+        function renderOverlay() {
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            if (!gameState.running) return;
+
+            // Полоски здоровья над 3D-врагами
+            for (const e of enemies) {
+                if (e.hp < e.maxHp && !e.isBoss) {
+                    const pos = project3DTo2D(e.x, 4.8, e.z);
+                    const w = 36, h = 5;
+                    overlayCtx.fillStyle = 'rgba(0,0,0,0.75)';
+                    overlayCtx.fillRect(pos.x - w / 2, pos.y, w, h);
+                    overlayCtx.fillStyle = e.enemyFaction === 'mermaid' ? '#ff0055' : '#ffaa00';
+                    overlayCtx.fillRect(pos.x - w / 2, pos.y, w * Math.max(0, e.hp / e.maxHp), h);
+                }
+                if (e.stunTimer > 0) {
+                    const pos = project3DTo2D(e.x, 5.6, e.z);
+                    overlayCtx.font = 'bold 11px monospace';
+                    overlayCtx.fillStyle = '#00f3ff';
+                    overlayCtx.textAlign = 'center';
+                    overlayCtx.fillText('⚡ОГЛУШЕН', pos.x, pos.y);
+                }
+            }
+
+            // Подпись над сетевым игроком
+            if (net.connected && net.remotePlayerState) {
+                const rp = net.remotePlayerState;
+                const pos = project3DTo2D(rp.x, 5.5, rp.z);
+                overlayCtx.font = 'bold 11px "Russo One", sans-serif';
+                overlayCtx.fillStyle = net.mode === 'pvp' ? '#ff0055' : '#10b981';
+                overlayCtx.textAlign = 'center';
+                overlayCtx.fillText(
+                    rp.hp > 0 ? `${net.mode === 'pvp' ? '⚔️ СОПЕРНИК' : '🤝 НАПАРНИК'} (${Math.ceil(rp.hp)})` : '⚠️ ЖДЕТ РЫВКА НАПАРНИКА!',
+                    pos.x,
+                    pos.y
+                );
+            }
+
+            // Всплывающие боевые надписи
+            for (const fl of floatingLabels) {
+                const pos = project3DTo2D(fl.x, fl.y, fl.z);
+                overlayCtx.globalAlpha = fl.life / fl.maxLife;
+                overlayCtx.font = 'bold 12px "Russo One", sans-serif';
+                overlayCtx.fillStyle = fl.color;
+                overlayCtx.textAlign = 'center';
+                overlayCtx.fillText(fl.text, pos.x, pos.y);
+            }
+            overlayCtx.globalAlpha = 1;
+
+            // Плавающий виртуальный джойстик для смартфона
+            if (touchJoy.active) {
+                overlayCtx.strokeStyle = 'rgba(0, 243, 255, 0.55)';
+                overlayCtx.lineWidth = 2.5;
+                overlayCtx.beginPath();
+                overlayCtx.arc(touchJoy.startX, touchJoy.startY, 46, 0, Math.PI * 2);
+                overlayCtx.stroke();
+
+                overlayCtx.fillStyle = 'rgba(0, 243, 255, 0.75)';
+                overlayCtx.beginPath();
+                overlayCtx.arc(touchJoy.currX, touchJoy.currY, 20, 0, Math.PI * 2);
+                overlayCtx.fill();
+            }
+        }
+
+        function showBanner(text) {
+            const banner = document.getElementById('toastBanner');
+            document.getElementById('toastText').textContent = text;
+            banner.classList.remove('opacity-0', 'scale-90');
+            banner.classList.add('opacity-100', 'scale-100');
+            clearTimeout(banner.hideTimeout);
+            banner.hideTimeout = setTimeout(() => {
+                banner.classList.remove('opacity-100', 'scale-100');
+                banner.classList.add('opacity-0', 'scale-90');
+            }, 2600);
+        }
+
+        // =========================================================================
+        // 9. СОБЫТИЯ УПРАВЛЕНИЯ (МОБИЛЬНЫЙ МУЛЬТИТАЧ + КЛАВИАТУРА/МЫШЬ + ЛОББИ)
+        // =========================================================================
+        const joyZone = document.getElementById('leftJoystickZone');
+
+        joyZone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const t = e.changedTouches[0];
+            touchJoy.active = true;
+            touchJoy.id = t.identifier;
+            touchJoy.startX = t.clientX;
+            touchJoy.startY = t.clientY;
+            touchJoy.currX = t.clientX;
+            touchJoy.currY = t.clientY;
+            touchJoy.dx = 0;
+            touchJoy.dy = 0;
+        }, { passive: false });
+
+        joyZone.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === touchJoy.id) {
+                    const rawDx = t.clientX - touchJoy.startX;
+                    const rawDy = t.clientY - touchJoy.startY;
+                    const dist = Math.hypot(rawDx, rawDy);
+                    const maxR = 46;
+                    if (dist > 0) {
+                        const clamped = Math.min(dist, maxR);
+                        touchJoy.currX = touchJoy.startX + (rawDx / dist) * clamped;
+                        touchJoy.currY = touchJoy.startY + (rawDy / dist) * clamped;
+                        touchJoy.dx = (rawDx / dist) * (clamped / maxR);
+                        touchJoy.dy = (rawDy / dist) * (clamped / maxR);
+                    }
+                }
+            }
+        }, { passive: false });
+
+        const endTouchJoy = (e) => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === touchJoy.id) {
+                    touchJoy.active = false;
+                    touchJoy.dx = 0;
+                    touchJoy.dy = 0;
+                }
+            }
+        };
+        joyZone.addEventListener('touchend', endTouchJoy);
+        joyZone.addEventListener('touchcancel', endTouchJoy);
+
+        // Кнопки мобильного геймпада (поддерживают и тач, и клик мышью)
+        function bindFastActionButton(id, fn) {
+            const el = document.getElementById(id);
+            el.addEventListener('touchstart', (e) => { e.preventDefault(); fn(); }, { passive: false });
+            el.addEventListener('mousedown', (e) => { e.preventDefault(); fn(); });
+        }
+        bindFastActionButton('btnThrowSaw', launchSawDisc);
+        bindFastActionButton('btnDashEscape', triggerOzoneDashEscape);
+        bindFastActionButton('btnOverdrive', triggerOzoneOverdrive);
+
+        // Клавиатура и Мышь для ПК
+        window.addEventListener('keydown', (e) => {
+            const c = e.code;
+            if (c === 'KeyW' || c === 'ArrowUp') keys.w = true;
+            if (c === 'KeyS' || c === 'ArrowDown') keys.s = true;
+            if (c === 'KeyA' || c === 'ArrowLeft') keys.a = true;
+            if (c === 'KeyD' || c === 'ArrowRight') keys.d = true;
+            if (c === 'Space') { e.preventDefault(); launchSawDisc(); }
+            if (c === 'ShiftLeft' || c === 'ShiftRight' || c === 'KeyQ') { e.preventDefault(); triggerOzoneDashEscape(); }
+            if (c === 'KeyE') { e.preventDefault(); triggerOzoneOverdrive(); }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const c = e.code;
+            if (c === 'KeyW' || c === 'ArrowUp') keys.w = false;
+            if (c === 'KeyS' || c === 'ArrowDown') keys.s = false;
+            if (c === 'KeyA' || c === 'ArrowLeft') keys.a = false;
+            if (c === 'KeyD' || c === 'ArrowRight') keys.d = false;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            if (!gameState.running || gameState.paused) return;
+            if (e.target.closest('button') || e.target.closest('header')) return;
+            if (e.button === 0) launchSawDisc();
+            if (e.button === 2) triggerOzoneOverdrive();
+        });
+        window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Обработчики Сетевого Лобби
+        document.getElementById('modeCoopBtn').addEventListener('click', () => {
+            net.mode = 'coop';
+            document.getElementById('modeCoopBtn').className = 'px-2.5 py-1 bg-cyan-500 text-slate-950';
+            document.getElementById('modePvpBtn').className = 'px-2.5 py-1 bg-slate-800 text-slate-300';
+        });
+
+        document.getElementById('modePvpBtn').addEventListener('click', () => {
+            net.mode = 'pvp';
+            document.getElementById('modePvpBtn').className = 'px-2.5 py-1 bg-rose-500 text-white';
+            document.getElementById('modeCoopBtn').className = 'px-2.5 py-1 bg-slate-800 text-slate-300';
+        });
+
+        document.getElementById('btnHostRoom').addEventListener('click', () => {
+            net.hostRoom((code) => {
+                document.getElementById('hostCodeBox').classList.remove('hidden');
+                document.getElementById('roomCodeDisplay').textContent = code;
+            });
+        });
+
+        document.getElementById('btnCopyCode').addEventListener('click', () => {
+            const tempInput = document.createElement('input');
+            tempInput.value = net.roomCode;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            setLobbyStatus(`📋 Код комнаты ${net.roomCode} скопирован в буфер!`, '#10b981');
+        });
+
+        document.getElementById('btnJoinRoom').addEventListener('click', () => {
+            const code = document.getElementById('joinCodeInput').value;
+            net.joinRoom(code);
+        });
+
+        // Кнопки выбора фракции и меню
+        document.getElementById('selectViking').addEventListener('click', () => startGame('viking'));
+        document.getElementById('selectMermaid').addEventListener('click', () => startGame('mermaid'));
+
+        document.getElementById('musicToggleBtn').addEventListener('click', (e) => {
+            audio.init();
+            audio.musicEnabled = !audio.musicEnabled;
+            if (audio.musicEnabled) audio.startMusic();
+            else audio.stopMusic();
+            e.currentTarget.textContent = audio.musicEnabled ? '🎵' : '🔕';
+        });
+
+        document.getElementById('soundToggleBtn').addEventListener('click', (e) => {
+            audio.init();
+            audio.sfxEnabled = !audio.sfxEnabled;
+            e.currentTarget.textContent = audio.sfxEnabled ? '🔊' : '🔇';
+        });
+
+        document.getElementById('upgradeMenuBtn').addEventListener('click', () => {
+            gameState.paused = true;
+            updateUpgradeModalUI();
+            document.getElementById('upgradeModal').classList.remove('hidden');
+        });
+
+        document.getElementById('closeUpgradeBtn').addEventListener('click', () => {
+            gameState.paused = false;
+            document.getElementById('upgradeModal').classList.add('hidden');
+        });
+
+        document.getElementById('restartSameBtn').addEventListener('click', () => startGame(gameState.faction));
+        document.getElementById('changeFactionBtn').addEventListener('click', () => {
+            document.getElementById('gameOverModal').classList.add('hidden');
+            document.getElementById('startModal').classList.remove('hidden');
+        });
+
+        // Главный цикл рендеринга 3D-сцены и 2D-оверлея
+        function animateLoop() {
+            updateGame();
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+            renderOverlay();
+            requestAnimationFrame(animateLoop);
+        }
+
+        window.onload = function() {
+            initThreeJS();
+            animateLoop();
+        };
+    </script>
+</body>
+</html>
